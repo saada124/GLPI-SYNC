@@ -1,0 +1,118 @@
+# GLPI ⇄ AppSheet Field Mappings
+# Each entity maps a Sheet tab name to a GLPI itemtype and its API endpoint.
+
+entities:
+  Users:
+    sheet_tab: Users
+    glpi_itemtype: User
+    api_endpoint: User
+    id_field: id
+    fields:
+      Name: name
+      Email: _useremails[-].email
+      Role: _profiles_id
+      Active: is_active
+    code_lookups:
+      Active:
+        "TRUE": 1
+        "FALSE": 0
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  Tickets:
+    sheet_tab: Tickets
+    glpi_itemtype: Ticket
+    api_endpoint: Ticket
+    id_field: id
+    fields:
+      Title: name
+      Description: content
+      Type: type
+      Category: itilcategories_id
+      Status: status
+      Societe: _suppliers_id
+      Submitted_By: _users_id_requester
+      Created_At: date_creation
+      Last_Updated_At: date_mod
+      Resolved_At: solvedate
+      Resolution: solution
+    code_lookups:
+      Type:
+        Incident: 1
+        Demande: 2
+      Status:
+        Nouveau: 1
+        "En cours (attribué)": 2
+        "En cours (planifié)": 3
+        "En attente": 4
+        Resolu: 5
+        Clos: 6
+      Priority:
+        faible: 2
+        moyenne: 3
+        haute: 4
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  Assets:
+    sheet_tab: Assets
+    glpi_itemtype: Computer
+    api_endpoint: Computer
+    id_field: id
+    fields:
+      Name: name
+      Category: computertypes_id
+      Other_Category: ""  # appended to comment
+      Status: states_id
+      Serial_Number: serial
+      Societe: _suppliers_id
+      Notes: comment
+      Purchase_Date: date_creation  # via Infocom
+      Cost: value  # via Infocom
+    code_lookups:
+      Status:
+        "En stock": 1
+        Attribué: 6  # assigned (in use)
+        "En réparation": 2
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  ticket_assignments:
+    sheet_tab: ticket_assignments
+    glpi_itemtype: Ticket_User
+    api_endpoint: Ticket_User
+    id_field: id
+    fields:
+      Ticket_ID: tickets_id
+      User_ID: users_id
+    constants:
+      type: 1  # 1 = assignee
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  assets_assignments:
+    sheet_tab: assets_assignments
+    glpi_itemtype: Computer  # updates Computer + Infocom
+    api_endpoint: Computer
+    id_field: id
+    fields:
+      Asset_ID: id
+      User_ID: users_id_tech
+      Checkout_At: ""  # via Infocom use_date
+      Checkin_At: ""   # clears users_id_tech
+      Condition_Out: "" # appended to Infocom comment
+      Condition_In: ""  # appended to Infocom comment
+      Notes: ""         # appended to Infocom comment
+      Assigned_By: ""   # appended to Infocom comment
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
