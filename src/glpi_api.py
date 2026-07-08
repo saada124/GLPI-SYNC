@@ -59,16 +59,13 @@ class GLPIAPI:
         return self._request("GET", f"{itemtype}/{item_id}")
 
     def search(self, itemtype: str, criteria: list[dict] | None = None) -> list[dict]:
-        params = {}
+        params = {"start": 0, "limit": 9999, "is_deleted": 0}
         if criteria:
             for i, criterion in enumerate(criteria):
                 for key, value in criterion.items():
                     params[f"criteria[{i}][{key}]"] = value
         data = self._request("GET", f"search/{itemtype}", params=params)
         return data.get("data", [])
-
-    def get_items(self, itemtype: str) -> list[dict]:
-        return self._request("GET", itemtype)
 
     def add_item(self, itemtype: str, fields: dict) -> int:
         result = self._request("POST", itemtype, json={"input": fields})

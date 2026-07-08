@@ -186,13 +186,22 @@ class Syncer:
         logger.info(f"[{tab}] Checking GLPI->Sheets...")
 
         last_sync = self.cache.get_last_sync()
-        criteria = [{"field": "date_mod", "searchtype": "greater", "value": last_sync}]
 
         try:
-            glpi_records = self.glpi.search(mapping.api_endpoint, criteria)
+            all_records = self.glpi.search(mapping.api_endpoint)
         except Exception as e:
             logger.error(f"[{tab}] GLPI search failed: {e}")
             return
+
+        if not all_records:
+            logger.info(f"[{tab}] No GLPI records found")
+            return
+
+        glpi_records = []
+        for rec in all_records:
+            date_mod = rec.get("date_mod", "")
+            if date_mod and date_mod > last_sync:
+                glpi_records.append(rec)
 
         if not glpi_records:
             logger.info(f"[{tab}] No GLPI changes since {last_sync}")
