@@ -12,6 +12,7 @@ from sheets_client import SheetsClient
 from field_mappings import load_mappings
 from cache import StateCache
 from sync import Syncer
+from lookup import LookupCache
 from logger import setup_logger
 
 
@@ -62,7 +63,11 @@ def main() -> int:
         return 1
 
     cache = StateCache()
-    syncer = Syncer(glpi, sheets, mappings, cache)
+
+    logger.info("Loading GLPI reference data for lookups...")
+    lookups = LookupCache(glpi, mappings)
+
+    syncer = Syncer(glpi, sheets, mappings, cache, lookups)
 
     interval_min = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
     run_once = "--once" in sys.argv

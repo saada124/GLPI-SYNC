@@ -15,6 +15,7 @@ class EntityMapping:
         self.id_field: str = config.get("id_field", "id")
         self.fields: dict[str, str] = config.get("fields", {})
         self.code_lookups: dict[str, dict[str, int]] = config.get("code_lookups", {})
+        self.lookups: dict[str, str] = config.get("lookups", {})
         self.constants: dict[str, Any] = config.get("constants", {})
         self.helper_columns: dict[str, str] = config.get("helper_columns", {})
         self.inline_values: dict[str, Any] = {}

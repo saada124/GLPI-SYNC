@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -8,6 +8,7 @@ from glpi_api import GLPIAPI
 from sheets_client import SheetsClient
 from field_mappings import EntityMapping
 from cache import StateCache
+from lookup import LookupCache
 from logger import setup_logger
 
 logger = setup_logger()
@@ -20,11 +21,13 @@ class Syncer:
         sheets: SheetsClient,
         mappings: dict[str, EntityMapping],
         cache: StateCache,
+        lookups: LookupCache,
     ):
         self.glpi = glpi
         self.sheets = sheets
         self.mappings = mappings
         self.cache = cache
+        self.lookups = lookups
         self._errors: list[dict] = []
 
     def run(self) -> None:
@@ -55,14 +58,6 @@ class Syncer:
 
         return self._errors
 
-    def _hash_row(self, row: dict, mapping: EntityMapping) -> str:
-        relevant = {
-            k: row.get(k, "") for k in mapping.fields
-            if k not in (mapping.glpi_id_col, mapping.synced_at_col, mapping.modified_at_col)
-        }
-        raw = json.dumps(relevant, sort_keys=True, default=str)
-        return hashlib.md5(raw.encode()).hexdigest()
-
     def _sync_direction_sheets_to_glpi(self, mapping: EntityMapping) -> None:
         tab = mapping.sheet_tab
         logger.info(f"[{tab}] Checking Sheets→GLPI...")
@@ -91,6 +86,24 @@ class Syncer:
                     pass
 
             payload = mapping.sheet_to_glpi(row)
+
+            # Apply text→ID lookups for reference columns
+            for col_name, ref_type in mapping.lookups.items():
+                raw_value = row.get(col_name)
+                if raw_value:
+                    glpi_field = mapping.fields.get(col_name)
+                    resolved = self.lookups.resolve(ref_type, str(raw_value).strip())
+                    if resolved is not None and glpi_field:
+                        payload[glpi_field] = resolved
+                    elif glpi_field and glpi_field in payload:
+                        del payload[glpi_field]
+
+            # Special handling: ticket_assignments resolves IDs via GLPI_ID columns
+            if tab == "ticket_assignments":
+                payload = self._resolve_ticket_assignment_ids(row, payload)
+                if payload is None:
+                    continue
+
             if not payload:
                 continue
 
@@ -116,6 +129,57 @@ class Syncer:
             if synced_at_col:
                 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 self.sheets.update_cell(tab, row_idx, synced_at_col, now)
+
+    def _resolve_ticket_assignment_ids(
+        self, row: dict, payload: dict
+    ) -> dict | None:
+        ticket_appsheet_id = str(row.get("Ticket_ID", "")).strip()
+        user_appsheet_id = str(row.get("User_ID", "")).strip()
+
+        # Look up GLPI_ID from Tickets tab
+        try:
+            tickets_records = self.sheets.get_all_records("Tickets")
+        except Exception:
+            logger.error("[ticket_assignments] Could not read Tickets sheet")
+            return None
+
+        glpi_ticket_id = None
+        for trec in tickets_records:
+            if str(trec.get("Ticket_ID", "")).strip() == ticket_appsheet_id:
+                gid = trec.get("GLPI_ID", "")
+                if gid:
+                    glpi_ticket_id = int(gid)
+                    break
+
+        glpi_user_id = None
+        if user_appsheet_id:
+            try:
+                users_records = self.sheets.get_all_records("Users")
+            except Exception:
+                users_records = []
+            for urec in users_records:
+                if str(urec.get("User_ID", "")).strip() == user_appsheet_id:
+                    gid = urec.get("GLPI_ID", "")
+                    if gid:
+                        glpi_user_id = int(gid)
+                    break
+
+        if not glpi_ticket_id:
+            logger.warning(
+                f"[ticket_assignments] No GLPI ticket ID found for Ticket_ID={ticket_appsheet_id}"
+            )
+            self._errors.append({
+                "entity": "ticket_assignments",
+                "ticket_id": ticket_appsheet_id,
+                "error": "Ticket not yet synced to GLPI or GLPI_ID missing",
+            })
+            return None
+
+        payload["tickets_id"] = glpi_ticket_id
+        if glpi_user_id:
+            payload["users_id"] = glpi_user_id
+
+        return payload
 
     def _sync_direction_glpi_to_sheets(self, mapping: EntityMapping) -> None:
         tab = mapping.sheet_tab
@@ -149,7 +213,6 @@ class Syncer:
             glpi_id = glpi_row.get("id")
             if not glpi_id:
                 continue
-
             date_mod = glpi_row.get("date_mod", "")
 
             existing_row_idx = None
@@ -174,9 +237,16 @@ class Syncer:
                 if not glpi_field:
                     continue
                 glpi_val = glpi_row.get(glpi_field, "")
+
+                # Reverse code lookup
                 if sheet_col in mapping.code_lookups:
-                    reverse = {v: k for k, v in mapping.code_lookups[sheet_col].items()}
-                    row_data[sheet_col] = reverse.get(glpi_val, glpi_val)
+                    rev = {v: k for k, v in mapping.code_lookups[sheet_col].items()}
+                    row_data[sheet_col] = rev.get(glpi_val, glpi_val)
+                # Reverse reference lookup
+                elif sheet_col in mapping.lookups:
+                    ref_type = mapping.lookups[sheet_col]
+                    name = self.lookups.resolve_reverse(ref_type, glpi_val) if glpi_val else None
+                    row_data[sheet_col] = name if name else glpi_val
                 else:
                     row_data[sheet_col] = glpi_val
 
@@ -208,6 +278,3 @@ class Syncer:
             except ValueError:
                 continue
         raise ValueError(f"Cannot parse timestamp: {ts}")
-
-
-import json  # noqa: E402 (needed by _hash_row)

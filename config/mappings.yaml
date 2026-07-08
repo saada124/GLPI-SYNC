@@ -38,6 +38,10 @@ entities:
       Last_Updated_At: date_mod
       Resolved_At: solvedate
       Resolution: solution
+    lookups:
+      Societe: Supplier
+      Category: ITILCategory
+      Submitted_By: User
     code_lookups:
       Type:
         Incident: 1
@@ -73,6 +77,9 @@ entities:
       Notes: comment
       Purchase_Date: date_creation  # via Infocom
       Cost: value  # via Infocom
+    lookups:
+      Societe: Supplier
+      Category: ComputerType
     code_lookups:
       Status:
         "En stock": 1
