@@ -68,9 +68,9 @@ class LookupCache:
 
         lmap = LookupMap()
         try:
-            items = glpi.search(search_type) or []
+            items = glpi.get_all(search_type) or []
         except Exception as e:
-            logger.warning(f"Search failed for '{ref_type}': {e}")
+            logger.warning(f"Failed to load '{ref_type}': {e}")
             return
 
         for item in items or []:

@@ -64,8 +64,18 @@ class GLPIAPI:
             for i, criterion in enumerate(criteria):
                 for key, value in criterion.items():
                     params[f"criteria[{i}][{key}]"] = value
-        data = self._request("GET", f"search/{itemtype}", params=params)
+        data = self._request("POST", f"search/{itemtype}", json=params)
         return data.get("data", [])
+
+    def get_all(self, itemtype: str) -> list[dict]:
+        """Get all items of a reference type (Supplier, ITILCategory, etc.)
+        Uses GET with Range header for proper id/name format."""
+        resp = self._session.get(
+            self.base_url + itemtype,
+            headers={**self._get_headers(), "Range": "items=0-9999"},
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def add_item(self, itemtype: str, fields: dict) -> int:
         result = self._request("POST", itemtype, json={"input": fields})
