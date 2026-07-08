@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
@@ -38,15 +38,15 @@ class Syncer:
             try:
                 self._sync_direction_sheets_to_glpi(mapping)
             except Exception as e:
-                logger.error(f"[{name}] Sheets→GLPI failed: {e}")
-                self._errors.append({"entity": name, "direction": "sheets→glpi", "error": str(e)})
+                logger.error(f"[{name}] Sheets->GLPI failed: {e}")
+                self._errors.append({"entity": name, "direction": "sheets->glpi", "error": str(e)})
 
         for name, mapping in self.mappings.items():
             try:
                 self._sync_direction_glpi_to_sheets(mapping)
             except Exception as e:
-                logger.error(f"[{name}] GLPI→Sheets failed: {e}")
-                self._errors.append({"entity": name, "direction": "glpi→sheets", "error": str(e)})
+                logger.error(f"[{name}] GLPI->Sheets failed: {e}")
+                self._errors.append({"entity": name, "direction": "glpi->sheets", "error": str(e)})
 
         now = datetime.now(timezone.utc).isoformat()
         self.cache.set_last_sync(now)
@@ -60,7 +60,7 @@ class Syncer:
 
     def _sync_direction_sheets_to_glpi(self, mapping: EntityMapping) -> None:
         tab = mapping.sheet_tab
-        logger.info(f"[{tab}] Checking Sheets→GLPI...")
+        logger.info(f"[{tab}] Checking Sheets->GLPI...")
 
         try:
             records = self.sheets.get_all_records(tab)
@@ -87,7 +87,7 @@ class Syncer:
 
             payload = mapping.sheet_to_glpi(row)
 
-            # Apply text→ID lookups for reference columns
+            # Apply text->ID lookups for reference columns
             for col_name, ref_type in mapping.lookups.items():
                 raw_value = row.get(col_name)
                 if raw_value:
@@ -183,7 +183,7 @@ class Syncer:
 
     def _sync_direction_glpi_to_sheets(self, mapping: EntityMapping) -> None:
         tab = mapping.sheet_tab
-        logger.info(f"[{tab}] Checking GLPI→Sheets...")
+        logger.info(f"[{tab}] Checking GLPI->Sheets...")
 
         last_sync = self.cache.get_last_sync()
         criteria = [{"field": "date_mod", "searchtype": "greater", "value": last_sync}]

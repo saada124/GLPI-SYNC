@@ -7,6 +7,14 @@ from logger import setup_logger
 
 logger = setup_logger()
 
+# Maps lookup reference types to GLPI search itemtypes
+REFERENCE_SEARCH_TYPES = {
+    "Supplier": "Supplier",
+    "ITILCategory": "ITILCategory",
+    "ComputerType": "ComputerType",
+    "User": "User",
+}
+
 
 class LookupMap:
     def __init__(self):
@@ -53,40 +61,23 @@ class LookupCache:
                 logger.warning(f"Failed to load lookup '{ref_type}': {e}")
 
     def _fetch_type(self, glpi: GLPIAPI, ref_type: str) -> None:
-        lmap = LookupMap()
-
-        if ref_type == "Supplier":
-            items = glpi.get_suppliers() or []
-            for item in items:
-                if item.get("name") and item.get("id"):
-                    lmap.add(item["name"], int(item["id"]))
-
-        elif ref_type == "ITILCategory":
-            items = glpi.get_itil_categories() or []
-            for item in items:
-                if item.get("name") and item.get("id"):
-                    lmap.add(item["name"], int(item["id"]))
-
-        elif ref_type == "ComputerType":
-            items = glpi.get_computer_types() or []
-            for item in items:
-                if item.get("name") and item.get("id"):
-                    lmap.add(item["name"], int(item["id"]))
-
-        elif ref_type == "User":
-            try:
-                items = glpi.search("User") or []
-                for item in items:
-                    uid = item.get("id")
-                    name = item.get("name")
-                    if name and uid:
-                        lmap.add(name, int(uid))
-            except Exception:
-                logger.warning("Could not load Users for lookups")
-
-        else:
+        search_type = REFERENCE_SEARCH_TYPES.get(ref_type)
+        if not search_type:
             logger.warning(f"Unknown lookup type: {ref_type}")
             return
 
+        lmap = LookupMap()
+        try:
+            items = glpi.search(search_type) or []
+        except Exception as e:
+            logger.warning(f"Search failed for '{ref_type}': {e}")
+            return
+
+        for item in items or []:
+            item_id = item.get("id")
+            name = item.get("name")
+            if name and item_id:
+                lmap.add(str(name).strip(), int(item_id))
+
         self._maps[ref_type] = lmap
-        logger.info(f"Loaded {len(lmap._name_to_id)} entries for '{ref_type}' lookups")
+        logger.info(f"Loaded {len(lmap._id_to_name)} entries for '{ref_type}'")

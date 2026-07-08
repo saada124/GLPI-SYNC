@@ -84,16 +84,5 @@ class GLPIAPI:
         return True
 
     def get_profiles(self) -> list[dict]:
-        return self._request("GET", "Profile")
-
-    def get_itil_categories(self) -> list[dict]:
-        return self._request("GET", "ITILCategory")
-
-    def get_computer_types(self) -> list[dict]:
-        return self._request("GET", "ComputerType")
-
-    def get_suppliers(self) -> list[dict]:
-        return self._request("GET", "Supplier")
-
-    def get_states(self) -> list[dict]:
-        return self._request("GET", "State")
+        data = self._request("GET", "search/Profile")
+        return data.get("data", [])
