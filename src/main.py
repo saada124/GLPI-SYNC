@@ -4,7 +4,6 @@
 import os
 import sys
 import time
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -24,8 +23,8 @@ def main() -> int:
     glpi_url = os.getenv("GLPI_URL")
     glpi_app_token = os.getenv("GLPI_APP_TOKEN")
     glpi_user_token = os.getenv("GLPI_USER_TOKEN")
-    sheet_creds = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    sheet_id = os.getenv("SHEET_ID")
+    sheets_webhook = os.getenv("SHEETS_WEBHOOK_URL")
+    sheets_token = os.getenv("SHEETS_AUTH_TOKEN")
 
     missing = []
     if not glpi_url:
@@ -34,19 +33,14 @@ def main() -> int:
         missing.append("GLPI_APP_TOKEN")
     if not glpi_user_token:
         missing.append("GLPI_USER_TOKEN")
-    if not sheet_creds:
-        missing.append("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if not sheet_id:
-        missing.append("SHEET_ID")
+    if not sheets_webhook:
+        missing.append("SHEETS_WEBHOOK_URL")
+    if not sheets_token:
+        missing.append("SHEETS_AUTH_TOKEN")
 
     if missing:
         logger.error(f"Missing required env vars: {', '.join(missing)}")
         logger.error("Copy .env.example to .env and fill in your credentials.")
-        return 1
-
-    creds_path = Path(sheet_creds)
-    if not creds_path.exists():
-        logger.error(f"Service account JSON not found at: {creds_path}")
         return 1
 
     logger.info("Loading field mappings...")
@@ -55,7 +49,7 @@ def main() -> int:
 
     logger.info("Connecting to Google Sheets...")
     try:
-        sheets = SheetsClient(str(creds_path), sheet_id)
+        sheets = SheetsClient(sheets_webhook, sheets_token)
     except Exception as e:
         logger.error(f"Failed to connect to Google Sheets: {e}")
         return 1
