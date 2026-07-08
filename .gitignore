@@ -7,3 +7,4 @@ cache/
 *.json
 venv/
 .venv/
+testsession copy.ps1

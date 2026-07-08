@@ -1,7 +1,6 @@
 import requests
 from typing import Any
 
-
 class GLPIAPI:
     def __init__(self, url: str, app_token: str, user_token: str):
         self.base_url = url.rstrip("/") + "/"
@@ -24,6 +23,7 @@ class GLPIAPI:
         resp = self._session.post(
             self.base_url + "initSession",
             headers=self._get_headers(),
+            json={"user_token": self.user_token},
         )
         resp.raise_for_status()
         self.session_token = resp.json().get("session_token")
