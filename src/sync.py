@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -75,6 +74,10 @@ class Syncer:
         synced_at_col = mapping.synced_at_col
         modified_at_col = mapping.modified_at_col
 
+        # Cache for ticket_assignments ID resolution (read once, not per row)
+        cache_tickets = None
+        cache_users = None
+
         for row_idx, row in enumerate(records, start=2):
             glpi_id = row.get(glpi_id_col) if glpi_id_col else None
             modified_at = row.get(modified_at_col) if modified_at_col else None
@@ -102,7 +105,14 @@ class Syncer:
 
             # Special handling: ticket_assignments resolves IDs via GLPI_ID columns
             if tab == "ticket_assignments":
-                payload = self._resolve_ticket_assignment_ids(row, payload)
+                if cache_tickets is None:
+                    try:
+                        cache_tickets = self.sheets.get_all_records("Tickets")
+                        cache_users = self.sheets.get_all_records("Users")
+                    except Exception:
+                        cache_tickets = []
+                        cache_users = []
+                payload = self._resolve_ticket_assignment_ids(row, payload, cache_tickets, cache_users)
                 if payload is None:
                     continue
 
@@ -133,16 +143,13 @@ class Syncer:
                 self.sheets.update_cell(tab, row_idx, synced_at_col, now)
 
     def _resolve_ticket_assignment_ids(
-        self, row: dict, payload: dict
+        self, row: dict, payload: dict, tickets_records: list, users_records: list
     ) -> dict | None:
         ticket_appsheet_id = str(row.get("Ticket_ID", "")).strip()
         user_appsheet_id = str(row.get("User_ID", "")).strip()
 
-        # Look up GLPI_ID from Tickets tab
-        try:
-            tickets_records = self.sheets.get_all_records("Tickets")
-        except Exception:
-            logger.error("[ticket_assignments] Could not read Tickets sheet")
+        if not tickets_records:
+            logger.error("[ticket_assignments] Tickets sheet data is empty")
             return None
 
         glpi_ticket_id = None
@@ -155,11 +162,7 @@ class Syncer:
 
         glpi_user_id = None
         if user_appsheet_id:
-            try:
-                users_records = self.sheets.get_all_records("Users")
-            except Exception:
-                users_records = []
-            for urec in users_records:
+            for urec in users_records or []:
                 if str(urec.get("User_ID", "")).strip() == user_appsheet_id:
                     gid = urec.get("GLPI_ID", "")
                     if gid:
