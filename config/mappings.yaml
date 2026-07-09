@@ -99,7 +99,7 @@ entities:
       Ticket_ID: tickets_id
       User_ID: users_id
     constants:
-      type: 1  # 1 = assignee
+      type: 2  # 1=Requester, 2=Assignee
     helper_columns:
       glpi_id: GLPI_ID
       synced_at: Synced_At

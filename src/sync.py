@@ -77,6 +77,7 @@ class Syncer:
         # Cache for ticket_assignments ID resolution (read once, not per row)
         cache_tickets = None
         cache_users = None
+        seen_combos = set()
 
         for row_idx, row in enumerate(records, start=2):
             glpi_id = row.get(glpi_id_col) if glpi_id_col else None
@@ -115,6 +116,12 @@ class Syncer:
                 payload = self._resolve_ticket_assignment_ids(row, payload, cache_tickets, cache_users)
                 if payload is None:
                     continue
+                # Skip duplicate combos within the same batch
+                combo_key = (payload.get("tickets_id"), payload.get("users_id"), payload.get("type", 2))
+                if combo_key in seen_combos:
+                    logger.warning(f"[ticket_assignments] Skipping duplicate combo {combo_key} in batch")
+                    continue
+                seen_combos.add(combo_key)
 
             if not payload:
                 continue
@@ -126,6 +133,9 @@ class Syncer:
                         self.sheets.update_cell(tab, row_idx, glpi_id_col, str(new_id))
                     logger.info(f"[{tab}] Created GLPI ID {new_id}")
                 except Exception as e:
+                    if tab == "ticket_assignments" and "400" in str(e):
+                        logger.warning(f"[{tab}] Skipping row {row_idx} (already exists or GLPI rejected): {e}")
+                        continue
                     logger.error(f"[{tab}] Failed to create row {row_idx}: {e}")
                     self._errors.append({"entity": tab, "row": row_idx, "error": str(e)})
                     continue
@@ -147,6 +157,10 @@ class Syncer:
     ) -> dict | None:
         ticket_appsheet_id = str(row.get("Ticket_ID", "")).strip()
         user_appsheet_id = str(row.get("User_ID", "")).strip()
+
+        if not user_appsheet_id:
+            logger.warning(f"[ticket_assignments] Skipping row: User_ID is empty")
+            return None
 
         if not tickets_records:
             logger.error("[ticket_assignments] Tickets sheet data is empty")
@@ -191,25 +205,23 @@ class Syncer:
         logger.info(f"[{tab}] Checking GLPI->Sheets...")
 
         last_sync = self.cache.get_last_sync()
+        is_initial = last_sync == "1970-01-01T00:00:00"
 
-        try:
-            all_records = self.glpi.get_all(mapping.api_endpoint)
-        except Exception:
+        if is_initial:
             try:
-                all_records = self.glpi.search(mapping.api_endpoint)
-            except Exception as e:
-                logger.error(f"[{tab}] GLPI query failed: {e}")
+                all_records = self.glpi.get_all(mapping.api_endpoint)
+            except Exception:
+                try:
+                    all_records = self.glpi.search(mapping.api_endpoint)
+                except Exception as e:
+                    logger.error(f"[{tab}] GLPI query failed: {e}")
+                    return
+            if not all_records:
+                logger.info(f"[{tab}] No GLPI records found")
                 return
-
-        if not all_records:
-            logger.info(f"[{tab}] No GLPI records found")
-            return
-
-        glpi_records = []
-        for rec in all_records:
-            date_mod = rec.get("date_mod", "")
-            if date_mod and self._is_newer(date_mod, last_sync):
-                glpi_records.append(rec)
+            glpi_records = [r for r in all_records if self._is_newer(r.get("date_mod", ""), last_sync)]
+        else:
+            glpi_records = self.glpi.get_changed_items(mapping.api_endpoint, last_sync)
 
         if not glpi_records:
             logger.info(f"[{tab}] No GLPI changes since {last_sync}")
@@ -226,17 +238,20 @@ class Syncer:
         synced_at_col = mapping.synced_at_col
         tolerance_s = 2
 
+        # Build O(1) GLPI_ID → row_index lookup
+        sheet_by_glpi_id: dict[str, int] = {}
+        for idx, sheet_row in enumerate(records, start=2):
+            gid = str(sheet_row.get(glpi_id_col, "")).strip()
+            if gid:
+                sheet_by_glpi_id[gid] = idx
+
         for glpi_row in glpi_records:
             glpi_id = glpi_row.get("id")
             if not glpi_id:
                 continue
             date_mod = glpi_row.get("date_mod", "")
 
-            existing_row_idx = None
-            for idx, sheet_row in enumerate(records, start=2):
-                if str(sheet_row.get(glpi_id_col, "")).strip() == str(glpi_id):
-                    existing_row_idx = idx
-                    break
+            existing_row_idx = sheet_by_glpi_id.get(str(glpi_id))
 
             if existing_row_idx and synced_at_col:
                 existing_synced = records[existing_row_idx - 2].get(synced_at_col, "")
