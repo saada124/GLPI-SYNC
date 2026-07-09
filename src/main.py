@@ -63,17 +63,15 @@ def main() -> int:
         return 1
 
     cache = StateCache()
-
-    logger.info("Loading GLPI reference data for lookups...")
-    lookups = LookupCache(glpi, mappings)
-
-    syncer = Syncer(glpi, sheets, mappings, cache, lookups)
+    syncer = Syncer(glpi, sheets, mappings, cache)
 
     interval_min = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
     run_once = "--once" in sys.argv
 
     if run_once:
         with glpi:
+            lookups = LookupCache(glpi, mappings)
+            syncer.set_lookups(lookups)
             errors = syncer.run()
         return 1 if errors else 0
 
@@ -82,6 +80,8 @@ def main() -> int:
     while True:
         try:
             with glpi:
+                lookups = LookupCache(glpi, mappings)
+                syncer.set_lookups(lookups)
                 syncer.run()
         except KeyboardInterrupt:
             logger.info("Shutting down (Ctrl+C)...")

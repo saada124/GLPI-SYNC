@@ -21,14 +21,16 @@ class Syncer:
         sheets: SheetsClient,
         mappings: dict[str, EntityMapping],
         cache: StateCache,
-        lookups: LookupCache,
     ):
         self.glpi = glpi
         self.sheets = sheets
         self.mappings = mappings
         self.cache = cache
-        self.lookups = lookups
+        self.lookups = None
         self._errors: list[dict] = []
+
+    def set_lookups(self, lookups: LookupCache) -> None:
+        self.lookups = lookups
 
     def run(self) -> None:
         logger.info("=== Sync cycle started ===")
@@ -90,7 +92,7 @@ class Syncer:
             # Apply text->ID lookups for reference columns
             for col_name, ref_type in mapping.lookups.items():
                 raw_value = row.get(col_name)
-                if raw_value:
+                if raw_value and self.lookups:
                     glpi_field = mapping.fields.get(col_name)
                     resolved = self.lookups.resolve(ref_type, str(raw_value).strip())
                     if resolved is not None and glpi_field:
@@ -252,7 +254,7 @@ class Syncer:
                     rev = {v: k for k, v in mapping.code_lookups[sheet_col].items()}
                     row_data[sheet_col] = rev.get(glpi_val, glpi_val)
                 # Reverse reference lookup
-                elif sheet_col in mapping.lookups:
+                elif sheet_col in mapping.lookups and self.lookups:
                     ref_type = mapping.lookups[sheet_col]
                     name = self.lookups.resolve_reverse(ref_type, glpi_val) if glpi_val else None
                     row_data[sheet_col] = name if name else glpi_val
