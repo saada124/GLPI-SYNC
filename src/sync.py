@@ -193,10 +193,13 @@ class Syncer:
         last_sync = self.cache.get_last_sync()
 
         try:
-            all_records = self.glpi.search(mapping.api_endpoint)
-        except Exception as e:
-            logger.error(f"[{tab}] GLPI search failed: {e}")
-            return
+            all_records = self.glpi.get_all(mapping.api_endpoint)
+        except Exception:
+            try:
+                all_records = self.glpi.search(mapping.api_endpoint)
+            except Exception as e:
+                logger.error(f"[{tab}] GLPI query failed: {e}")
+                return
 
         if not all_records:
             logger.info(f"[{tab}] No GLPI records found")
@@ -205,7 +208,7 @@ class Syncer:
         glpi_records = []
         for rec in all_records:
             date_mod = rec.get("date_mod", "")
-            if date_mod and date_mod > last_sync:
+            if date_mod and self._is_newer(date_mod, last_sync):
                 glpi_records.append(rec)
 
         if not glpi_records:
@@ -274,6 +277,14 @@ class Syncer:
                 row_data[glpi_id_col] = str(glpi_id) if glpi_id_col else ""
                 self.sheets.append_row(tab, row_data, headers)
                 logger.info(f"[{tab}] Appended new sheet row for GLPI ID {glpi_id}")
+
+    def _is_newer(self, date_mod_str: str, last_sync_str: str) -> bool:
+        try:
+            dm = self._parse_timestamp(date_mod_str)
+            ls = self._parse_timestamp(last_sync_str)
+            return dm > ls
+        except (ValueError, TypeError):
+            return False
 
     @staticmethod
     def _parse_timestamp(ts: str) -> datetime:
