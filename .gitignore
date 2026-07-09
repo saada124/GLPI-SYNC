@@ -8,3 +8,5 @@ cache/
 venv/
 .venv/
 testsession copy.ps1
+run_sync.bat
+setup_task.ps1
