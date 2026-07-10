@@ -18,7 +18,6 @@ class EntityMapping:
         self.lookups: dict[str, str] = config.get("lookups", {})
         self.constants: dict[str, Any] = config.get("constants", {})
         self.helper_columns: dict[str, str] = config.get("helper_columns", {})
-        self.inline_values: dict[str, Any] = {}
 
     @property
     def glpi_id_col(self) -> str | None:
@@ -44,12 +43,7 @@ class EntityMapping:
             else:
                 payload[glpi_field] = raw
         payload.update(self.constants)
-        payload.update(self.inline_values)
         return {k: v for k, v in payload.items() if v is not None and v != ""}
-
-    def lookup_code(self, field: str, value: str) -> Any:
-        table = self.code_lookups.get(field, {})
-        return table.get(str(value).strip(), value)
 
 
 def load_mappings() -> dict[str, EntityMapping]:

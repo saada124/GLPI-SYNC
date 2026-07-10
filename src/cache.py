@@ -34,15 +34,3 @@ class StateCache:
     def set_last_sync(self, timestamp: str) -> None:
         self._data["last_sync"] = timestamp
         self._save()
-
-    def get_row_hash(self, tab: str, glpi_id: int) -> str | None:
-        return self._data.get("row_hashes", {}).get(tab, {}).get(str(glpi_id))
-
-    def set_row_hash(self, tab: str, glpi_id: int, hash_val: str) -> None:
-        self._data.setdefault("row_hashes", {})
-        self._data["row_hashes"].setdefault(tab, {})
-        self._data["row_hashes"][tab][str(glpi_id)] = hash_val
-        self._save()
-
-    def get_all_glpi_ids(self, tab: str) -> dict[str, str]:
-        return self._data.get("row_hashes", {}).get(tab, {}).copy()

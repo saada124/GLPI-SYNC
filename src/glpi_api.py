@@ -225,9 +225,5 @@ class GLPIAPI:
 
     def update_item(self, itemtype: str, item_id: int, fields: dict) -> bool:
         fields["id"] = item_id
-        result = self._request("PUT", itemtype, json={"input": fields})
+        self._request("PUT", itemtype, json={"input": fields})
         return True
-
-    def get_profiles(self) -> list[dict]:
-        data = self._request("GET", "search/Profile")
-        return data.get("data", [])
