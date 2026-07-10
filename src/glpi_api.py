@@ -81,14 +81,6 @@ class GLPIAPI:
             return list(raw.values())
         return raw
 
-    def _get_date_mod_field_id(self, itemtype: str) -> int:
-        """Find the search-option field ID for `date_mod` (Last update)."""
-        opts = self._request("GET", f"listSearchOptions/{itemtype}")
-        for key, val in opts.items():
-            if isinstance(val, dict) and val.get("name") == "Last update":
-                return int(key)
-        return 19  # fallback that works for most itemtypes
-
     def _find_field_id_by_name(self, itemtype: str, name: str) -> int | None:
         """Return the search-option field ID whose name matches `name`."""
         opts = self._request("GET", f"listSearchOptions/{itemtype}")
@@ -191,12 +183,45 @@ class GLPIAPI:
             return result[0].get("id", result[0])
         return result.get("id", 0)
 
+    def _search_paginated(self, itemtype: str, forcedisplay: list[str] | None = None) -> list[dict]:
+        """Paginate through *all* search results. Returns field-ID-keyed dicts."""
+        all_rows: list[dict] = []
+        body: dict = {"start": 0, "limit": 100, "is_deleted": 0}
+        if forcedisplay:
+            body["forcedisplay"] = forcedisplay
+
+        while True:
+            data = self._request("POST", f"search/{itemtype}", json=body)
+            rows = data.get("data", [])
+            total = data.get("totalcount", 0)
+            if isinstance(rows, dict):
+                rows = list(rows.values())
+            if not rows:
+                break
+            all_rows.extend(rows)
+            body["start"] += len(rows)
+            if body["start"] >= total:
+                break
+        return all_rows
+
     def get_all_ticket_users(self) -> list[dict]:
-        """Get all Ticket_User records using search endpoint (GET is capped at 15)."""
-        result = self.search("Ticket_User")
-        if result and len(result) > 0:
-            return result
-        return self.get_all("Ticket_User")
+        """Get ALL Ticket_User records as name-keyed dicts.
+
+        The list endpoint is capped at 15, and search returns field-ID keys.
+        This paginates search for IDs, then fetches each full record via get_item.
+        """
+        rows = self._search_paginated("Ticket_User", forcedisplay=["2"])
+        items: list[dict] = []
+        for row in rows:
+            glpi_id = row.get("2")
+            if not glpi_id:
+                continue
+            try:
+                item = self.get_item("Ticket_User", int(glpi_id))
+                items.append(item)
+            except Exception:
+                continue
+        return items
 
     def update_item(self, itemtype: str, item_id: int, fields: dict) -> bool:
         fields["id"] = item_id

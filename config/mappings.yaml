@@ -9,13 +9,16 @@ entities:
     id_field: id
     fields:
       Name: name
-      Email: _useremails[-].email
-      Role: _profiles_id
+      Role: profiles_id
       Active: is_active
     code_lookups:
       Active:
         "TRUE": 1
         "FALSE": 0
+      Role:
+        "user": 1
+        "admin": 3
+        "super_admin": 4
     helper_columns:
       glpi_id: GLPI_ID
       synced_at: Synced_At
@@ -100,25 +103,6 @@ entities:
       User_ID: users_id
     constants:
       type: 2  # 1=Requester, 2=Assignee
-    helper_columns:
-      glpi_id: GLPI_ID
-      synced_at: Synced_At
-      modified_at: Modified_At
-
-  assets_assignments:
-    sheet_tab: assets_assignments
-    glpi_itemtype: Computer  # updates Computer + Infocom
-    api_endpoint: Computer
-    id_field: id
-    fields:
-      Asset_ID: id
-      User_ID: users_id_tech
-      Checkout_At: ""  # via Infocom use_date
-      Checkin_At: ""   # clears users_id_tech
-      Condition_Out: "" # appended to Infocom comment
-      Condition_In: ""  # appended to Infocom comment
-      Notes: ""         # appended to Infocom comment
-      Assigned_By: ""   # appended to Infocom comment
     helper_columns:
       glpi_id: GLPI_ID
       synced_at: Synced_At

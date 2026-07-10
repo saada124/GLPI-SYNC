@@ -65,7 +65,6 @@ class Syncer:
 
         try:
             records = self.sheets.get_all_records(tab)
-            headers = self.sheets.get_headers(tab)
         except Exception as e:
             logger.error(f"[{tab}] Failed to read sheet: {e}")
             return
@@ -183,6 +182,12 @@ class Syncer:
                         glpi_user_id = int(gid)
                     break
 
+        if not glpi_user_id:
+            logger.warning(
+                f"[ticket_assignments] No GLPI user ID found for User_ID={user_appsheet_id}"
+            )
+            return None
+
         if not glpi_ticket_id:
             logger.warning(
                 f"[ticket_assignments] No GLPI ticket ID found for Ticket_ID={ticket_appsheet_id}"
@@ -195,8 +200,7 @@ class Syncer:
             return None
 
         payload["tickets_id"] = glpi_ticket_id
-        if glpi_user_id:
-            payload["users_id"] = glpi_user_id
+        payload["users_id"] = glpi_user_id
 
         return payload
 
@@ -204,31 +208,33 @@ class Syncer:
         tab = mapping.sheet_tab
         logger.info(f"[{tab}] Checking GLPI->Sheets...")
 
-        last_sync = self.cache.get_last_sync()
-        is_initial = last_sync == "1970-01-01T00:00:00"
-
-        if is_initial:
-            try:
-                all_records = self.glpi.get_all(mapping.api_endpoint)
-            except Exception:
-                try:
-                    all_records = self.glpi.search(mapping.api_endpoint)
-                except Exception as e:
-                    logger.error(f"[{tab}] GLPI query failed: {e}")
-                    return
-            if not all_records:
-                logger.info(f"[{tab}] No GLPI records found")
+        if mapping.api_endpoint == "Ticket_User":
+            glpi_records = self.glpi.get_all_ticket_users()
+            if not glpi_records:
+                logger.info(f"[{tab}] No Ticket_User records found")
                 return
-            glpi_records = [r for r in all_records if self._is_newer(r.get("date_mod", ""), last_sync)]
         else:
-            glpi_records = self.glpi.get_changed_items(mapping.api_endpoint, last_sync)
-
-        if not glpi_records:
-            logger.info(f"[{tab}] No GLPI changes since {last_sync}")
-            return
+            last_sync = self.cache.get_last_sync()
+            is_initial = last_sync == "1970-01-01T00:00:00"
+            if is_initial:
+                try:
+                    glpi_records = self.glpi.get_all(mapping.api_endpoint)
+                except Exception:
+                    try:
+                        glpi_records = self.glpi.search(mapping.api_endpoint)
+                    except Exception as e:
+                        logger.error(f"[{tab}] GLPI query failed: {e}")
+                        return
+                if not glpi_records:
+                    logger.info(f"[{tab}] No GLPI records found")
+                    return
+            else:
+                glpi_records = self.glpi.get_changed_items(mapping.api_endpoint, last_sync)
+                if not glpi_records:
+                    logger.info(f"[{tab}] No GLPI changes since {last_sync}")
+                    return
 
         try:
-            headers = self.sheets.get_headers(tab)
             records = self.sheets.get_all_records(tab)
         except Exception as e:
             logger.error(f"[{tab}] Failed to read sheet: {e}")
@@ -238,31 +244,67 @@ class Syncer:
         synced_at_col = mapping.synced_at_col
         tolerance_s = 2
 
-        # Build O(1) GLPI_ID → row_index lookup
         sheet_by_glpi_id: dict[str, int] = {}
         for idx, sheet_row in enumerate(records, start=2):
             gid = str(sheet_row.get(glpi_id_col, "")).strip()
             if gid:
                 sheet_by_glpi_id[gid] = idx
 
+        id_maps: dict[str, dict[str, str]] = {}
+        sheet_by_composite: dict[tuple, int] = {}
+        if tab == "ticket_assignments":
+            for ref_tab in ("Tickets", "Users"):
+                try:
+                    ref_records = self.sheets.get_all_records(ref_tab)
+                    id_maps[ref_tab] = {}
+                    ref_id_col = ref_tab[:-1] + "_ID"
+                    for r in ref_records:
+                        gid = r.get("GLPI_ID", "")
+                        if gid:
+                            id_maps[ref_tab][str(gid)] = r.get(ref_id_col, "")
+                except Exception:
+                    id_maps[ref_tab] = {}
+            for idx, sr in enumerate(records, start=2):
+                key = (
+                    str(sr.get("Ticket_ID", "")).strip(),
+                    str(sr.get("User_ID", "")).strip(),
+                )
+                if key[0] and key[1]:
+                    sheet_by_composite[key] = idx
+
         for glpi_row in glpi_records:
             glpi_id = glpi_row.get("id")
             if not glpi_id:
                 continue
-            date_mod = glpi_row.get("date_mod", "")
 
             existing_row_idx = sheet_by_glpi_id.get(str(glpi_id))
+            if not existing_row_idx:
+                if tab == "ticket_assignments":
+                    raw_tid = glpi_row.get("tickets_id")
+                    raw_uid = glpi_row.get("users_id")
+                    ticket_as_id = id_maps.get("Tickets", {}).get(str(raw_tid), "")
+                    user_as_id = id_maps.get("Users", {}).get(str(raw_uid), "")
+                    key = (ticket_as_id, user_as_id)
+                    existing_row_idx = sheet_by_composite.get(key)
+                    if existing_row_idx:
+                        self.sheets.update_cell(tab, existing_row_idx, glpi_id_col, str(glpi_id))
+                if not existing_row_idx:
+                    continue  # only update rows that came from AppSheet
 
-            if existing_row_idx and synced_at_col:
+            date_mod = glpi_row.get("date_mod", "")
+            if synced_at_col:
                 existing_synced = records[existing_row_idx - 2].get(synced_at_col, "")
-                if existing_synced and date_mod:
-                    try:
-                        glpi_ts = self._parse_timestamp(date_mod)
-                        sheet_ts = self._parse_timestamp(existing_synced)
-                        if abs((glpi_ts - sheet_ts).total_seconds()) <= tolerance_s:
-                            continue
-                    except (ValueError, TypeError):
-                        pass
+                if existing_synced:
+                    if tab == "ticket_assignments" and not date_mod:
+                        continue  # junction table has no modification timestamp
+                    if date_mod:
+                        try:
+                            glpi_ts = self._parse_timestamp(date_mod)
+                            sheet_ts = self._parse_timestamp(existing_synced)
+                            if abs((glpi_ts - sheet_ts).total_seconds()) <= tolerance_s:
+                                continue
+                        except (ValueError, TypeError):
+                            pass
 
             row_data: dict[str, Any] = {}
             for sheet_col, glpi_field in mapping.fields.items():
@@ -270,36 +312,33 @@ class Syncer:
                     continue
                 glpi_val = glpi_row.get(glpi_field, "")
 
-                # Reverse code lookup
                 if sheet_col in mapping.code_lookups:
                     rev = {v: k for k, v in mapping.code_lookups[sheet_col].items()}
                     row_data[sheet_col] = rev.get(glpi_val, glpi_val)
-                # Reverse reference lookup
                 elif sheet_col in mapping.lookups and self.lookups:
                     ref_type = mapping.lookups[sheet_col]
-                    name = self.lookups.resolve_reverse(ref_type, glpi_val) if glpi_val else None
-                    row_data[sheet_col] = name if name else glpi_val
+                    if glpi_val or glpi_val == 0:
+                        name = self.lookups.resolve_reverse(ref_type, glpi_val)
+                        if name:
+                            row_data[sheet_col] = name
+                        elif glpi_val:
+                            row_data[sheet_col] = glpi_val
                 else:
                     row_data[sheet_col] = glpi_val
 
-            if existing_row_idx:
-                self.sheets.update_row(tab, existing_row_idx, row_data)
-                if synced_at_col:
-                    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                    self.sheets.update_cell(tab, existing_row_idx, synced_at_col, now)
-                logger.info(f"[{tab}] Updated sheet row for GLPI ID {glpi_id}")
-            else:
-                row_data[glpi_id_col] = str(glpi_id) if glpi_id_col else ""
-                self.sheets.append_row(tab, row_data, headers)
-                logger.info(f"[{tab}] Appended new sheet row for GLPI ID {glpi_id}")
+            if tab == "ticket_assignments":
+                raw_tid = glpi_row.get("tickets_id")
+                if raw_tid is not None:
+                    row_data["Ticket_ID"] = id_maps.get("Tickets", {}).get(str(raw_tid), row_data.get("Ticket_ID", ""))
+                raw_uid = glpi_row.get("users_id")
+                if raw_uid is not None:
+                    row_data["User_ID"] = id_maps.get("Users", {}).get(str(raw_uid), row_data.get("User_ID", ""))
 
-    def _is_newer(self, date_mod_str: str, last_sync_str: str) -> bool:
-        try:
-            dm = self._parse_timestamp(date_mod_str)
-            ls = self._parse_timestamp(last_sync_str)
-            return dm > ls
-        except (ValueError, TypeError):
-            return False
+            self.sheets.update_row(tab, existing_row_idx, row_data)
+            if synced_at_col:
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                self.sheets.update_cell(tab, existing_row_idx, synced_at_col, now)
+            logger.info(f"[{tab}] Updated sheet row for GLPI ID {glpi_id}")
 
     @staticmethod
     def _parse_timestamp(ts: str) -> datetime:

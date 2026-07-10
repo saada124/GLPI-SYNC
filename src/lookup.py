@@ -79,5 +79,16 @@ class LookupCache:
             if name and item_id:
                 lmap.add(str(name).strip(), int(item_id))
 
+        # Search API finds sub-categories / hidden items the listing API misses
+        try:
+            extra = glpi._search_paginated(search_type, forcedisplay=["1", "2"])
+            for row in extra:
+                item_id = row.get("2")
+                name = row.get("1")
+                if name and item_id:
+                    lmap.add(str(name).strip(), int(item_id))
+        except Exception:
+            pass
+
         self._maps[ref_type] = lmap
         logger.info(f"Loaded {len(lmap._id_to_name)} entries for '{ref_type}'")
