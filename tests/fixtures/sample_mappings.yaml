@@ -1,0 +1,61 @@
+entities:
+  Users:
+    sheet_tab: Users
+    glpi_itemtype: User
+    api_endpoint: User
+    id_field: id
+    fields:
+      Name: name
+      Role: profiles_id
+      Active: is_active
+    code_lookups:
+      Active:
+        "TRUE": 1
+        "FALSE": 0
+      Role:
+        user: 1
+        admin: 3
+        super_admin: 4
+    constants: {}
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  Tickets:
+    sheet_tab: Tickets
+    glpi_itemtype: Ticket
+    api_endpoint: Ticket
+    id_field: id
+    fields:
+      Title: name
+      Status: status
+      Category: itilcategories_id
+    lookups:
+      Category: ITILCategory
+    code_lookups:
+      Status:
+        Nouveau: 1
+        "En cours (attribué)": 2
+        Resolu: 5
+        Clos: 6
+    constants: {}
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+
+  ticket_assignments:
+    sheet_tab: ticket_assignments
+    glpi_itemtype: Ticket_User
+    api_endpoint: Ticket_User
+    id_field: id
+    fields:
+      Ticket_ID: tickets_id
+      User_ID: users_id
+    constants:
+      type: 2
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
