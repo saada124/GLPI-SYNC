@@ -334,10 +334,9 @@ class Syncer:
                 if raw_uid is not None:
                     row_data["User_ID"] = id_maps.get("Users", {}).get(str(raw_uid), row_data.get("User_ID", ""))
 
-            self.sheets.update_row(tab, existing_row_idx, row_data)
             if synced_at_col:
-                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                self.sheets.update_cell(tab, existing_row_idx, synced_at_col, now)
+                row_data[synced_at_col] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            self.sheets.update_row(tab, existing_row_idx, row_data)
             logger.info(f"[{tab}] Updated sheet row for GLPI ID {glpi_id}")
 
     @staticmethod
