@@ -9,6 +9,7 @@
  *   getHeaders   — returns only the header row
  *   updateCell   — set a single cell value
  *   updateRow    — set all cells in one row (batch write)
+ *   batchUpdateRows — set cells in multiple rows (single read/write)
  *   appendRow    — append a new row of values
  */
 
@@ -46,6 +47,8 @@ function handleRequest(e) {
         return handleUpdateCell(sheet, e);
       case "updateRow":
         return handleUpdateRow(sheet, e);
+      case "batchUpdateRows":
+        return handleBatchUpdateRows(sheet, e);
       case "appendRow":
         return handleAppendRow(sheet, e);
       default:
@@ -110,6 +113,32 @@ function handleUpdateRow(sheet, e) {
     }
   }
   sheet.getRange(row, 1, 1, headers.length).setValues([currentRow]);
+  return sendJson({status: "ok"});
+}
+
+function handleBatchUpdateRows(sheet, e) {
+  var rowsParam = e.parameter.rows;
+  if (!rowsParam) {
+    return sendJson({status: "error", message: "Missing rows"}, 400);
+  }
+  var updates = JSON.parse(rowsParam);
+  var range = sheet.getDataRange();
+  var allData = range.getValues();
+  var headers = allData[0];
+
+  for (var i = 0; i < updates.length; i++) {
+    var rowIdx = updates[i].row - 1;
+    if (rowIdx < 1 || rowIdx >= allData.length) continue;
+    var values = updates[i].values;
+    var row = allData[rowIdx];
+    for (var c = 0; c < headers.length; c++) {
+      if (values.hasOwnProperty(headers[c])) {
+        row[c] = String(values[headers[c]]);
+      }
+    }
+  }
+
+  sheet.getRange(1, 1, allData.length, headers.length).setValues(allData);
   return sendJson({status: "ok"});
 }
 

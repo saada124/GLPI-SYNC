@@ -77,6 +77,7 @@ class Syncer:
         cache_tickets = None
         cache_users = None
         seen_combos = set()
+        pending_updates: dict[int, dict[str, Any]] = {}
 
         for row_idx, row in enumerate(records, start=2):
             glpi_id = row.get(glpi_id_col) if glpi_id_col else None
@@ -129,7 +130,7 @@ class Syncer:
                 try:
                     new_id = self.glpi.add_item(mapping.api_endpoint, payload)
                     if glpi_id_col:
-                        self.sheets.update_cell(tab, row_idx, glpi_id_col, str(new_id))
+                        pending_updates[row_idx] = {glpi_id_col: str(new_id)}
                     logger.info(f"[{tab}] Created GLPI ID {new_id}")
                 except Exception as e:
                     if tab == "ticket_assignments" and "400" in str(e):
@@ -149,7 +150,10 @@ class Syncer:
 
             if synced_at_col:
                 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                self.sheets.update_cell(tab, row_idx, synced_at_col, now)
+                pending_updates.setdefault(row_idx, {})[synced_at_col] = now
+
+        if pending_updates:
+            self.sheets.batch_update_rows(tab, list(pending_updates.items()))
 
     def _resolve_ticket_assignment_ids(
         self, row: dict, payload: dict, tickets_records: list, users_records: list
@@ -244,6 +248,7 @@ class Syncer:
         synced_at_col = mapping.synced_at_col
         tolerance_s = 2
 
+        pending_batch: dict[int, dict[str, Any]] = {}
         sheet_by_glpi_id: dict[str, int] = {}
         for idx, sheet_row in enumerate(records, start=2):
             gid = str(sheet_row.get(glpi_id_col, "")).strip()
@@ -287,7 +292,7 @@ class Syncer:
                     key = (ticket_as_id, user_as_id)
                     existing_row_idx = sheet_by_composite.get(key)
                     if existing_row_idx:
-                        self.sheets.update_cell(tab, existing_row_idx, glpi_id_col, str(glpi_id))
+                        pending_batch.setdefault(existing_row_idx, {})[glpi_id_col] = str(glpi_id)
                 if not existing_row_idx:
                     continue  # only update rows that came from AppSheet
 
@@ -336,8 +341,14 @@ class Syncer:
 
             if synced_at_col:
                 row_data[synced_at_col] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            self.sheets.update_row(tab, existing_row_idx, row_data)
+            if existing_row_idx in pending_batch:
+                pending_batch[existing_row_idx].update(row_data)
+            else:
+                pending_batch[existing_row_idx] = row_data
             logger.info(f"[{tab}] Updated sheet row for GLPI ID {glpi_id}")
+
+        if pending_batch:
+            self.sheets.batch_update_rows(tab, list(pending_batch.items()))
 
     @staticmethod
     def _parse_timestamp(ts: str) -> datetime:

@@ -28,6 +28,20 @@ class SheetsClient:
     def update_cell(self, tab: str, row: int, col_name: str, value: Any) -> None:
         self._call("updateCell", sheet=tab, row=str(row), col=col_name, value=str(value))
 
+    def batch_update_rows(self, tab: str, updates: list[tuple[int, dict[str, Any]]]) -> None:
+        rows_data = []
+        for row_num, data in updates:
+            filtered = {k: v for k, v in data.items() if v != "" and v is not None and v != 0}
+            if filtered:
+                rows_data.append({"row": row_num, "values": filtered})
+        if not rows_data:
+            return
+        try:
+            self._call("batchUpdateRows", sheet=tab, rows=json.dumps(rows_data))
+        except Exception:
+            for row_num, data in updates:
+                self.update_row(tab, row_num, data)
+
     def update_row(self, tab: str, row: int, data: dict[str, Any]) -> None:
         filtered = {k: v for k, v in data.items() if v != "" and v is not None and v != 0}
         if not filtered:
