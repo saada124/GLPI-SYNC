@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
 from glpi_api import GLPIAPI
@@ -34,6 +35,13 @@ class Syncer:
     def run(self) -> None:
         logger.info("=== Sync cycle started ===")
         self._errors.clear()
+        self._cycle_stats: dict[str, int] = {
+            "created": 0, "updated_glpi": 0,
+            "sheet_updates": 0, "skipped": 0,
+            "errors": 0,
+        }
+
+        t0 = perf_counter()
 
         for name, mapping in self.mappings.items():
             try:
@@ -49,13 +57,21 @@ class Syncer:
                 logger.error(f"[{name}] GLPI->Sheets failed: {e}")
                 self._errors.append({"entity": name, "direction": "glpi->sheets", "error": str(e)})
 
+        elapsed = perf_counter() - t0
+
         now = datetime.now(timezone.utc).isoformat()
         self.cache.set_last_sync(now)
 
-        if self._errors:
-            logger.warning(f"Sync finished with {len(self._errors)} error(s)")
-        else:
-            logger.info("=== Sync cycle completed successfully ===")
+        self._cycle_stats["errors"] = len(self._errors)
+        s = self._cycle_stats
+        logger.info(
+            f"=== Sync cycle complete: {s['created']} created, "
+            f"{s['updated_glpi']} updated in GLPI, "
+            f"{s['sheet_updates']} sheet rows refreshed, "
+            f"{s['skipped']} skipped, "
+            f"{s['errors']} errors "
+            f"({elapsed:.1f}s) ==="
+        )
 
         return self._errors
 
@@ -115,11 +131,13 @@ class Syncer:
                         cache_users = []
                 payload = self._resolve_ticket_assignment_ids(row, payload, cache_tickets, cache_users)
                 if payload is None:
+                    self._cycle_stats["skipped"] += 1
                     continue
                 # Skip duplicate combos within the same batch
                 combo_key = (payload.get("tickets_id"), payload.get("users_id"), payload.get("type", 2))
                 if combo_key in seen_combos:
                     logger.warning(f"[ticket_assignments] Skipping duplicate combo {combo_key} in batch")
+                    self._cycle_stats["skipped"] += 1
                     continue
                 seen_combos.add(combo_key)
 
@@ -131,10 +149,12 @@ class Syncer:
                     new_id = self.glpi.add_item(mapping.api_endpoint, payload)
                     if glpi_id_col:
                         pending_updates[row_idx] = {glpi_id_col: str(new_id)}
+                    self._cycle_stats["created"] += 1
                     logger.info(f"[{tab}] Created GLPI ID {new_id}")
                 except Exception as e:
                     if tab == "ticket_assignments" and "400" in str(e):
                         logger.warning(f"[{tab}] Skipping row {row_idx} (already exists or GLPI rejected): {e}")
+                        self._cycle_stats["skipped"] += 1
                         continue
                     logger.error(f"[{tab}] Failed to create row {row_idx}: {e}")
                     self._errors.append({"entity": tab, "row": row_idx, "error": str(e)})
@@ -142,6 +162,7 @@ class Syncer:
             else:
                 try:
                     self.glpi.update_item(mapping.api_endpoint, int(glpi_id), payload)
+                    self._cycle_stats["updated_glpi"] += 1
                     logger.info(f"[{tab}] Updated GLPI ID {glpi_id}")
                 except Exception as e:
                     logger.error(f"[{tab}] Failed to update GLPI ID {glpi_id}: {e}")
@@ -301,12 +322,14 @@ class Syncer:
                 existing_synced = records[existing_row_idx - 2].get(synced_at_col, "")
                 if existing_synced:
                     if tab == "ticket_assignments" and not date_mod:
+                        self._cycle_stats["skipped"] += 1
                         continue  # junction table has no modification timestamp
                     if date_mod:
                         try:
                             glpi_ts = self._parse_timestamp(date_mod)
                             sheet_ts = self._parse_timestamp(existing_synced)
                             if abs((glpi_ts - sheet_ts).total_seconds()) <= tolerance_s:
+                                self._cycle_stats["skipped"] += 1
                                 continue
                         except (ValueError, TypeError):
                             pass
@@ -345,6 +368,7 @@ class Syncer:
                 pending_batch[existing_row_idx].update(row_data)
             else:
                 pending_batch[existing_row_idx] = row_data
+            self._cycle_stats["sheet_updates"] += 1
             logger.info(f"[{tab}] Updated sheet row for GLPI ID {glpi_id}")
 
         if pending_batch:
