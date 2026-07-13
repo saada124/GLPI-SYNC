@@ -18,6 +18,19 @@ class EntityMapping:
         self.lookups: dict[str, str] = config.get("lookups", {})
         self.constants: dict[str, Any] = config.get("constants", {})
         self.helper_columns: dict[str, str] = config.get("helper_columns", {})
+        routing = config.get("itemtype_routing")
+        if routing:
+            self.routing_field: str | None = routing.get("category_field")
+            self.routing_fallback: str | None = routing.get("fallback_field")
+            self.routing_default: str | None = routing.get("default_itemtype")
+            self.routing_default_endpoint: str | None = routing.get("default_endpoint")
+            self.routing_map: dict[str, dict[str, str]] = routing.get("mapping", {})
+        else:
+            self.routing_field = None
+            self.routing_fallback = None
+            self.routing_default = None
+            self.routing_default_endpoint = None
+            self.routing_map = {}
 
     @property
     def glpi_id_col(self) -> str | None:
@@ -30,6 +43,19 @@ class EntityMapping:
     @property
     def modified_at_col(self) -> str | None:
         return self.helper_columns.get("modified_at")
+
+    def get_route(self, row: dict[str, Any]) -> dict[str, str] | None:
+        if not self.routing_field:
+            return None
+        val = str(row.get(self.routing_field, "")).strip()
+        if val == "Autre" and self.routing_fallback:
+            val = str(row.get(self.routing_fallback, "")).strip()
+        route = self.routing_map.get(val)
+        if route:
+            return route
+        if self.routing_default:
+            return {"itemtype": self.routing_default, "endpoint": self.routing_default_endpoint or self.routing_default}
+        return None
 
     def sheet_to_glpi(self, row: dict[str, Any]) -> dict[str, Any]:
         payload = {}

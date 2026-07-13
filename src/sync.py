@@ -141,12 +141,22 @@ class Syncer:
                     continue
                 seen_combos.add(combo_key)
 
+            # Resolve itemtype routing for assets
+            if mapping.routing_field:
+                route = mapping.get_route(row)
+                if not route:
+                    self._cycle_stats["skipped"] += 1
+                    continue
+                endpoint = route["endpoint"]
+            else:
+                endpoint = mapping.api_endpoint
+
             if not payload:
                 continue
 
             if not glpi_id or str(glpi_id).strip() == "":
                 try:
-                    new_id = self.glpi.add_item(mapping.api_endpoint, payload)
+                    new_id = self.glpi.add_item(endpoint, payload)
                     if glpi_id_col:
                         pending_updates[row_idx] = {glpi_id_col: str(new_id)}
                     self._cycle_stats["created"] += 1
@@ -161,10 +171,25 @@ class Syncer:
                     continue
             else:
                 try:
-                    self.glpi.update_item(mapping.api_endpoint, int(glpi_id), payload)
+                    self.glpi.update_item(endpoint, int(glpi_id), payload)
                     self._cycle_stats["updated_glpi"] += 1
                     logger.info(f"[{tab}] Updated GLPI ID {glpi_id}")
                 except Exception as e:
+                    if mapping.routing_field and endpoint != mapping.api_endpoint:
+                        try:
+                            self.glpi.delete_item(mapping.api_endpoint, int(glpi_id))
+                            logger.info(f"[{tab}] Deleted old {mapping.api_endpoint}/{glpi_id}")
+                            new_id = self.glpi.add_item(endpoint, payload)
+                            if glpi_id_col:
+                                pending_updates[row_idx] = {glpi_id_col: str(new_id)}
+                            self._cycle_stats["created"] += 1
+                            self._cycle_stats["updated_glpi"] -= 1
+                            logger.info(f"[{tab}] Migrated GLPI ID {glpi_id} -> {new_id} ({endpoint})")
+                            continue
+                        except Exception as e2:
+                            logger.error(f"[{tab}] Migration failed for GLPI ID {glpi_id}: {e2}")
+                            self._errors.append({"entity": tab, "glpi_id": glpi_id, "error": str(e2)})
+                            continue
                     logger.error(f"[{tab}] Failed to update GLPI ID {glpi_id}: {e}")
                     self._errors.append({"entity": tab, "glpi_id": glpi_id, "error": str(e)})
                     continue
@@ -233,10 +258,43 @@ class Syncer:
         tab = mapping.sheet_tab
         logger.info(f"[{tab}] Checking GLPI->Sheets...")
 
-        if mapping.api_endpoint == "Ticket_User":
+        if mapping.routing_field:
+            records = self.sheets.get_all_records(tab)
+            needed_types = set()
+            for row in records:
+                route = mapping.get_route(row)
+                if route:
+                    needed_types.add(route["itemtype"])
+            if not needed_types:
+                return
+            glpi_records = []
+            last_sync = self.cache.get_last_sync()
+            is_initial = last_sync == "1970-01-01T00:00:00"
+            for itemtype in needed_types:
+                try:
+                    if is_initial:
+                        try:
+                            items = self.glpi.get_all(itemtype)
+                        except Exception:
+                            items = self.glpi.search(itemtype)
+                    else:
+                        items = self.glpi.get_changed_items(itemtype, last_sync)
+                except Exception:
+                    items = None
+                for item in items or []:
+                    item["_itemtype"] = itemtype
+                glpi_records.extend(items or [])
+            if not glpi_records:
+                return
+        elif mapping.api_endpoint == "Ticket_User":
             glpi_records = self.glpi.get_all_ticket_users()
             if not glpi_records:
                 logger.info(f"[{tab}] No Ticket_User records found")
+                return
+            try:
+                records = self.sheets.get_all_records(tab)
+            except Exception as e:
+                logger.error(f"[{tab}] Failed to read sheet: {e}")
                 return
         else:
             last_sync = self.cache.get_last_sync()
@@ -258,12 +316,11 @@ class Syncer:
                 if not glpi_records:
                     logger.info(f"[{tab}] No GLPI changes since {last_sync}")
                     return
-
-        try:
-            records = self.sheets.get_all_records(tab)
-        except Exception as e:
-            logger.error(f"[{tab}] Failed to read sheet: {e}")
-            return
+            try:
+                records = self.sheets.get_all_records(tab)
+            except Exception as e:
+                logger.error(f"[{tab}] Failed to read sheet: {e}")
+                return
 
         glpi_id_col = mapping.glpi_id_col
         synced_at_col = mapping.synced_at_col
@@ -271,10 +328,15 @@ class Syncer:
 
         pending_batch: dict[int, dict[str, Any]] = {}
         sheet_by_glpi_id: dict[str, int] = {}
+        sheet_by_key: dict[tuple[str, str], int] = {}
         for idx, sheet_row in enumerate(records, start=2):
             gid = str(sheet_row.get(glpi_id_col, "")).strip()
             if gid:
                 sheet_by_glpi_id[gid] = idx
+                if mapping.routing_field:
+                    route = mapping.get_route(sheet_row)
+                    itemtype = route["itemtype"] if route else ""
+                    sheet_by_key[(itemtype, gid)] = idx
 
         id_maps: dict[str, dict[str, str]] = {}
         sheet_by_composite: dict[tuple, int] = {}
@@ -303,7 +365,11 @@ class Syncer:
             if not glpi_id:
                 continue
 
-            existing_row_idx = sheet_by_glpi_id.get(str(glpi_id))
+            if mapping.routing_field:
+                itemtype = glpi_row.get("_itemtype", "")
+                existing_row_idx = sheet_by_key.get((itemtype, str(glpi_id)))
+            else:
+                existing_row_idx = sheet_by_glpi_id.get(str(glpi_id))
             if not existing_row_idx:
                 if tab == "ticket_assignments":
                     raw_tid = glpi_row.get("tickets_id")

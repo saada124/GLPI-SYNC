@@ -45,6 +45,40 @@ entities:
       synced_at: Synced_At
       modified_at: Modified_At
 
+  Assets:
+    sheet_tab: Assets
+    glpi_itemtype: Computer
+    api_endpoint: Computer
+    id_field: id
+    fields:
+      Name: name
+      Status: states_id
+      Serial_Number: serial
+      Societe: _suppliers_id
+    lookups:
+      Societe: Supplier
+    code_lookups:
+      Status:
+        "En stock": 1
+        Attribué: 6
+    constants: {}
+    helper_columns:
+      glpi_id: GLPI_ID
+      synced_at: Synced_At
+      modified_at: Modified_At
+    itemtype_routing:
+      category_field: Category
+      fallback_field: Other_Category
+      default_itemtype: Computer
+      default_endpoint: Computer
+      mapping:
+        Laptop:            {itemtype: Computer,   endpoint: Computer}
+        Desktop:           {itemtype: Computer,   endpoint: Computer}
+        Écran:             {itemtype: Monitor,    endpoint: Monitor}
+        Périphérique:      {itemtype: Peripheral, endpoint: Peripheral}
+        Imprimante:        {itemtype: Printer,    endpoint: Printer}
+        Cable:             {itemtype: Cable,      endpoint: Cable}
+
   ticket_assignments:
     sheet_tab: ticket_assignments
     glpi_itemtype: Ticket_User

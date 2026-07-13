@@ -72,8 +72,6 @@ entities:
     id_field: id
     fields:
       Name: name
-      Category: computertypes_id
-      Other_Category: ""  # appended to comment
       Status: states_id
       Serial_Number: serial
       Societe: _suppliers_id
@@ -82,7 +80,6 @@ entities:
       Cost: value  # via Infocom
     lookups:
       Societe: Supplier
-      Category: ComputerType
     code_lookups:
       Status:
         "En stock": 1
@@ -92,6 +89,27 @@ entities:
       glpi_id: GLPI_ID
       synced_at: Synced_At
       modified_at: Modified_At
+    itemtype_routing:
+      category_field: Category
+      fallback_field: Other_Category
+      default_itemtype: Computer
+      default_endpoint: Computer
+      mapping:
+        Laptop:            {itemtype: Computer,          endpoint: Computer}
+        Desktop:           {itemtype: Computer,          endpoint: Computer}
+        Écran:             {itemtype: Monitor,           endpoint: Monitor}
+        Téléphone:         {itemtype: Phone,             endpoint: Phone}
+        Périphérique:      {itemtype: Peripheral,        endpoint: Peripheral}
+        Imprimante:        {itemtype: Printer,           endpoint: Printer}
+        License:           {itemtype: SoftwareLicense,   endpoint: SoftwareLicense}
+        Software:          {itemtype: Software,          endpoint: Software}
+        Rack:              {itemtype: Rack,              endpoint: Rack}
+        Network Device:    {itemtype: NetworkEquipment,  endpoint: NetworkEquipment}
+        Cartridge:         {itemtype: CartridgeItem,     endpoint: CartridgeItem}
+        Consumable:        {itemtype: ConsumableItem,    endpoint: ConsumableItem}
+        PDU:               {itemtype: PDU,               endpoint: PDU}
+        Passive Device:    {itemtype: PassiveDCEquipment, endpoint: PassiveDCEquipment}
+        Cable:             {itemtype: Cable,             endpoint: Cable}
 
   ticket_assignments:
     sheet_tab: ticket_assignments

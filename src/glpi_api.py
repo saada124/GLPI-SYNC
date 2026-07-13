@@ -227,3 +227,7 @@ class GLPIAPI:
         fields["id"] = item_id
         self._request("PUT", itemtype, json={"input": fields})
         return True
+
+    def delete_item(self, itemtype: str, item_id: int) -> bool:
+        self._request("DELETE", f"{itemtype}/{item_id}")
+        return True

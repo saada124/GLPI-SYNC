@@ -84,6 +84,76 @@ class TestEntityMapping:
         assert result == {"tickets_id": "42", "type": 2}
 
 
+class TestRouting:
+    def test_no_routing_by_default(self):
+        config = {"sheet_tab": "Users", "glpi_itemtype": "User", "api_endpoint": "User",
+                   "fields": {}, "code_lookups": {}, "lookups": {}, "constants": {}}
+        m = EntityMapping("Users", config)
+        assert m.routing_field is None
+        assert m.get_route({"Category": "Laptop"}) is None
+
+    def test_route_by_category(self):
+        config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",
+                   "fields": {"Name": "name"}, "code_lookups": {}, "lookups": {}, "constants": {},
+                   "helper_columns": {},
+                   "itemtype_routing": {
+                       "category_field": "Category",
+                       "mapping": {
+                           "Laptop": {"itemtype": "Computer", "endpoint": "Computer"},
+                           "Écran": {"itemtype": "Monitor", "endpoint": "Monitor"},
+                       }}}
+        m = EntityMapping("Assets", config)
+        assert m.get_route({"Category": "Laptop"}) == {"itemtype": "Computer", "endpoint": "Computer"}
+        assert m.get_route({"Category": "Écran"}) == {"itemtype": "Monitor", "endpoint": "Monitor"}
+
+    def test_route_unknown_returns_none(self):
+        config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",
+                   "fields": {}, "code_lookups": {}, "lookups": {}, "constants": {},
+                   "helper_columns": {},
+                   "itemtype_routing": {
+                       "category_field": "Category",
+                       "mapping": {"Laptop": {"itemtype": "Computer", "endpoint": "Computer"}}}}
+        m = EntityMapping("Assets", config)
+        assert m.get_route({"Category": "UNKNOWN"}) is None
+
+    def test_route_fallback_default(self):
+        config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",
+                   "fields": {}, "code_lookups": {}, "lookups": {}, "constants": {},
+                   "helper_columns": {},
+                   "itemtype_routing": {
+                       "category_field": "Category",
+                       "default_itemtype": "Computer",
+                       "default_endpoint": "Computer",
+                       "mapping": {"Laptop": {"itemtype": "Computer", "endpoint": "Computer"}}}}
+        m = EntityMapping("Assets", config)
+        assert m.get_route({"Category": "UNKNOWN"}) == {"itemtype": "Computer", "endpoint": "Computer"}
+
+    def test_route_fallback_to_other_category(self):
+        config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",
+                   "fields": {}, "code_lookups": {}, "lookups": {}, "constants": {},
+                   "helper_columns": {},
+                   "itemtype_routing": {
+                       "category_field": "Category",
+                       "fallback_field": "Other_Category",
+                       "mapping": {
+                           "Cable": {"itemtype": "Cable", "endpoint": "Cable"},
+                       }}}
+        m = EntityMapping("Assets", config)
+        assert m.get_route({"Category": "Autre", "Other_Category": "Cable"}) == {"itemtype": "Cable", "endpoint": "Cable"}
+
+    def test_route_strips_whitespace(self):
+        config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",
+                   "fields": {}, "code_lookups": {}, "lookups": {}, "constants": {},
+                   "helper_columns": {},
+                   "itemtype_routing": {
+                       "category_field": "Category",
+                       "mapping": {
+                           "Laptop": {"itemtype": "Computer", "endpoint": "Computer"},
+                       }}}
+        m = EntityMapping("Assets", config)
+        assert m.get_route({"Category": "  Laptop  "}) == {"itemtype": "Computer", "endpoint": "Computer"}
+
+
 class TestLoadMappings:
     def test_load_mappings_from_fixture(self, monkeypatch, sample_yaml):
         monkeypatch.setattr("field_mappings.MAPPINGS_PATH", sample_yaml)
@@ -110,3 +180,14 @@ class TestLoadMappings:
         mappings = load_mappings()
         ta = mappings["ticket_assignments"]
         assert ta.constants == {"type": 2}
+
+    def test_load_mappings_assets_routing(self, monkeypatch, sample_yaml):
+        monkeypatch.setattr("field_mappings.MAPPINGS_PATH", sample_yaml)
+        mappings = load_mappings()
+        assets = mappings["Assets"]
+        assert assets.routing_field == "Category"
+        assert assets.routing_fallback == "Other_Category"
+        assert assets.routing_default == "Computer"
+        assert assets.routing_map["Laptop"] == {"itemtype": "Computer", "endpoint": "Computer"}
+        assert assets.routing_map["Écran"] == {"itemtype": "Monitor", "endpoint": "Monitor"}
+        assert assets.get_route({"Category": "Laptop"}) == {"itemtype": "Computer", "endpoint": "Computer"}
