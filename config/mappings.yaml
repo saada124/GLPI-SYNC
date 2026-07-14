@@ -83,8 +83,9 @@ entities:
     code_lookups:
       Status:
         "En stock": 1
-        Attribué: 6  # assigned (in use)
         "En réparation": 2
+        Attribué: 3
+        Retiré: 4
     helper_columns:
       glpi_id: GLPI_ID
       synced_at: Synced_At
