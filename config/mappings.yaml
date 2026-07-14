@@ -100,7 +100,8 @@ entities:
         Écran:             {itemtype: Monitor,           endpoint: Monitor}
         Téléphone:         {itemtype: Phone,             endpoint: Phone}
         Périphérique:      {itemtype: Peripheral,        endpoint: Peripheral}
-        Imprimante:        {itemtype: Printer,           endpoint: Printer}
+        Imprimante:        {itemtype: Printer,    endpoint: Printer}
+        Imprimente:        {itemtype: Printer,    endpoint: Printer}
         License:           {itemtype: SoftwareLicense,   endpoint: SoftwareLicense}
         Software:          {itemtype: Software,          endpoint: Software}
         Rack:              {itemtype: Rack,              endpoint: Rack}
