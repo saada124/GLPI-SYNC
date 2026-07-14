@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
@@ -270,7 +271,7 @@ class Syncer:
             glpi_records = []
             last_sync = self.cache.get_last_sync()
             is_initial = last_sync == "1970-01-01T00:00:00"
-            for itemtype in needed_types:
+            def _fetch_one(itemtype: str) -> list[dict]:
                 try:
                     if is_initial:
                         try:
@@ -280,10 +281,15 @@ class Syncer:
                     else:
                         items = self.glpi.get_changed_items(itemtype, last_sync)
                 except Exception:
-                    items = None
-                for item in items or []:
+                    items = []
+                for item in items:
                     item["_itemtype"] = itemtype
-                glpi_records.extend(items or [])
+                return items
+
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                futures = {ex.submit(_fetch_one, t): t for t in needed_types}
+                for f in as_completed(futures):
+                    glpi_records.extend(f.result())
             if not glpi_records:
                 return
         elif mapping.api_endpoint == "Ticket_User":

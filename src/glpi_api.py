@@ -13,6 +13,7 @@ class GLPIAPI:
             "Content-Type": "application/json",
             "App-Token": self.app_token,
         })
+        self._search_option_cache: dict[str, dict] = {}
 
     def _get_headers(self) -> dict:
         headers = {"App-Token": self.app_token}
@@ -82,8 +83,9 @@ class GLPIAPI:
         return raw
 
     def _find_field_id_by_name(self, itemtype: str, name: str) -> int | None:
-        """Return the search-option field ID whose name matches `name`."""
-        opts = self._request("GET", f"listSearchOptions/{itemtype}")
+        if itemtype not in self._search_option_cache:
+            self._search_option_cache[itemtype] = self._request("GET", f"listSearchOptions/{itemtype}")
+        opts = self._search_option_cache[itemtype]
         for key, val in opts.items():
             if isinstance(val, dict) and val.get("name") == name:
                 return int(key)
