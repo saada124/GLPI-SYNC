@@ -21,6 +21,7 @@ entities:
       glpi_id: GLPI_ID
       synced_at: Synced_At
       modified_at: Modified_At
+      created_at: Created_At
 
   Tickets:
     sheet_tab: Tickets
@@ -44,6 +45,7 @@ entities:
       glpi_id: GLPI_ID
       synced_at: Synced_At
       modified_at: Modified_At
+      created_at: Created_At
 
   Assets:
     sheet_tab: Assets
@@ -66,6 +68,7 @@ entities:
       glpi_id: GLPI_ID
       synced_at: Synced_At
       modified_at: Modified_At
+      created_at: Created_At
     itemtype_routing:
       category_field: Category
       fallback_field: Other_Category
@@ -93,3 +96,4 @@ entities:
       glpi_id: GLPI_ID
       synced_at: Synced_At
       modified_at: Modified_At
+      created_at: Created_At

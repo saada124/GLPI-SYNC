@@ -44,6 +44,10 @@ class EntityMapping:
     def modified_at_col(self) -> str | None:
         return self.helper_columns.get("modified_at")
 
+    @property
+    def created_at_col(self) -> str | None:
+        return self.helper_columns.get("created_at")
+
     def get_route(self, row: dict[str, Any]) -> dict[str, str] | None:
         if not self.routing_field:
             return None
