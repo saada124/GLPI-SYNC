@@ -82,7 +82,38 @@ class GLPIAPI:
             return list(raw.values())
         return raw
 
+    def _find_field_id_by_key(
+        self, itemtype: str, field_key: str, table: str | None = None
+    ) -> int | None:
+        """Find a search-option field ID by its untranslated DB column key
+        (e.g. 'date_mod'), optionally disambiguated by `table`.
+
+        listSearchOptions returns a translated `name` per option (which
+        changes with GLPI's configured language) alongside a stable `field`
+        key. For linked-table references (e.g. Ticket_User's ticket/user
+        links), GLPI sets `field: "id"` on BOTH the ticket-link and the
+        user-link options — they're only distinguishable by `table`
+        (glpi_tickets vs glpi_users). So field_key="id" alone is ambiguous;
+        pass `table` in that case to pick the right one.
+        """
+        if itemtype not in self._search_option_cache:
+            self._search_option_cache[itemtype] = self._request("GET", f"listSearchOptions/{itemtype}")
+        opts = self._search_option_cache[itemtype]
+        for key, val in opts.items():
+            if not isinstance(val, dict) or val.get("field") != field_key:
+                continue
+            if table is not None and val.get("table") != table:
+                continue
+            return int(key)
+        return None
+
     def _find_field_id_by_name(self, itemtype: str, name: str) -> int | None:
+        """Find a search-option field ID by its translated display name.
+
+        Fragile across languages — only use as a last-resort fallback for
+        pseudo/computed search options that may lack a stable `field` key.
+        Prefer _find_field_id_by_key wherever possible.
+        """
         if itemtype not in self._search_option_cache:
             self._search_option_cache[itemtype] = self._request("GET", f"listSearchOptions/{itemtype}")
         opts = self._search_option_cache[itemtype]
@@ -92,8 +123,20 @@ class GLPIAPI:
         return None
 
     def _get_date_mod_field_id(self, itemtype: str) -> int | None:
-        """Find the search-option field ID for `date_mod` (Last update)."""
-        return self._find_field_id_by_name(itemtype, "Last update")
+        """Find the search-option field ID for `date_mod`, independent of
+        GLPI's configured language."""
+        field_id = self._find_field_id_by_key(itemtype, "date_mod")
+        if field_id is not None:
+            return field_id
+        # Fallback for edge cases where a plugin/pseudo field lacks a
+        # stable `field` key — tries common display names as last resort.
+        return self._resolve_search_field_id(
+            itemtype,
+            "Last update",
+            "Dernière modification",
+            "Date de modification",
+            "Dernière mise à jour",
+        )
 
     def get_changed_items(self, itemtype: str, since_timestamp: str) -> list[dict]:
         """Fetch items modified since `since_timestamp`.
@@ -213,10 +256,26 @@ class GLPIAPI:
                 break
         return all_rows
 
-    def _resolve_search_field_id(self, itemtype: str, *candidate_names: str) -> int | None:
-        """Resolve a search-option field ID by one of several possible display names."""
-        for name in candidate_names:
-            field_id = self._find_field_id_by_name(itemtype, name)
+    def _resolve_search_field_id(
+        self, itemtype: str, *candidates: str, table: str | None = None
+    ) -> int | None:
+        """Resolve a search-option field ID from a list of candidates.
+
+        Each candidate is tried first as an untranslated DB field key
+        (language-independent, e.g. 'tickets_id', 'date_mod'), then as a
+        translated display name (fragile, changes with GLPI's language).
+
+        `table` disambiguates cases like Ticket_User's ticket-link vs
+        user-link options, which both report field="id" and are only
+        distinguishable by which table (glpi_tickets vs glpi_users) they
+        join to.
+        """
+        for candidate in candidates:
+            field_id = self._find_field_id_by_key(itemtype, candidate, table=table)
+            if field_id is not None:
+                return field_id
+        for candidate in candidates:
+            field_id = self._find_field_id_by_name(itemtype, candidate)
             if field_id is not None:
                 return field_id
         return None
@@ -225,16 +284,18 @@ class GLPIAPI:
         self, ticket_ids: set[int] | list[int] | None = None
     ) -> dict[tuple[int, int], dict]:
         ticket_field = self._resolve_search_field_id(
-            "Ticket_User", "Tickets", "Ticket", "tickets_id"
+            "Ticket_User", "id", "tickets_id", "Tickets", "Ticket",
+            table="glpi_tickets",
         )
         user_field = self._resolve_search_field_id(
-            "Ticket_User", "Users", "User", "users_id"
+            "Ticket_User", "id", "users_id", "Users", "User", "Utilisateurs", "Utilisateur",
+            table="glpi_users",
         )
         type_field = self._resolve_search_field_id(
-            "Ticket_User", "Type", "type"
+            "Ticket_User", "type", "Type"
         )
         date_mod_field = self._resolve_search_field_id(
-            "Ticket_User", "Last update", "date_mod"
+            "Ticket_User", "Last update", "Dernière modification", "Date de modification", "Dernière mise à jour", "date_mod"
         )
 
         forcedisplay = ["2"]  # id
@@ -333,13 +394,15 @@ class GLPIAPI:
     ) -> dict | None:
         """Find one Ticket_User by tickets_id + users_id (+ optional type)."""
         ticket_field = self._resolve_search_field_id(
-            "Ticket_User", "Tickets", "Ticket", "tickets_id"
+            "Ticket_User", "id", "tickets_id", "Tickets", "Ticket",
+            table="glpi_tickets",
         )
         user_field = self._resolve_search_field_id(
-            "Ticket_User", "Users", "User", "users_id"
+            "Ticket_User", "id", "users_id", "Users", "User", "Utilisateurs", "Utilisateur",
+            table="glpi_users",
         )
         type_field = self._resolve_search_field_id(
-            "Ticket_User", "Type", "type"
+            "Ticket_User", "type", "Type"
         )
         if ticket_field is None or user_field is None:
             return None
