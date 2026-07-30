@@ -1,0 +1,109 @@
+================================================================================
+          ⚡ GUIDE ULTRA-RAPIDE DE CONFIGURATION (GLPI ↔ APPSHEET)
+================================================================================
+
+Ce guide est spécialement conçu pour être simple, rapide et facile à suivre.
+Suivez ces 5 étapes chrono pour connecter votre GLPI à Google Sheets / AppSheet !
+
+================================================================================
+ÉTAPE 1 : ACTIVATION DE L'API DANS GLPI (2 MIN)
+================================================================================
+
+1. Connectez-vous à GLPI avec votre compte administrateur.
+2. Allez dans le menu : Configuration > Général > API.
+3. Activez les options suivantes (Mettre sur "OUI") :
+   - [x] Activer la connexion par API REST
+   - [x] Activer la connexion par jeton d'application
+4. Cliquez sur le bouton "Sauvegarder".
+
+5. RÉCUPÉRER VOTRE 1ère CLÉ (GLPI_APP_TOKEN) :
+   - Sur cette même page API, descendez jusqu à "Clés d'application API".
+   - Cliquez sur le petit "+" (Ajouter).
+   - Donnez le nom : Sync
+   - Cliquez sur "Ajouter".
+   - ➜ COPIEZ la clé générée (C'est votre GLPI_APP_TOKEN).
+
+6. RÉCUPÉRER VOTRE 2ème CLÉ (GLPI_USER_TOKEN) :
+   - Cliquez sur votre nom d'utilisateur tout en haut à droite (Mon compte).
+   - Descendez jusqu à la section "Clé d'API personnelle".
+   - Cliquez sur "Générer une clé d'API".
+   - ➜ COPIEZ cette clé personnelle (C'est votre GLPI_USER_TOKEN).
+
+
+================================================================================
+ÉTAPE 2 : CONFIGURATION GOOGLE SHEETS (1 MIN)
+================================================================================
+
+1. Ouvrez votre fichier Google Sheets.
+2. Dans le menu du haut, cliquez sur : Extensions > Apps Script.
+3. EFFACEZ TOUT le code présent à l'écran.
+4. Ouvrez le fichier `src/webhook/Code.gs` de ce projet, COPIEZ son contenu et COLLEZ-LE dans Apps Script.
+5. Cliquez sur le bouton bleu "Déployer" (en haut à droite) > "Nouveau déploiement".
+6. Sélectionnez : Application Web.
+   - Exécuter en tant que : Moi
+   - Qui a accès : N'importe qui
+7. Cliquez sur "Déployer" et acceptez les autorisations de Google.
+8. ➜ COPIEZ l'URL fournie (C'est votre SHEETS_WEBHOOK_URL).
+
+
+================================================================================
+ÉTAPE 3 : CRÉER LE FICHIER DE CONFIGURATION `.env` (1 MIN)
+================================================================================
+
+À la racine du dossier du projet, créez un fichier texte nommé `.env`.
+Copiez et collez le bloc suivant à l'intérieur, puis remplacez avec vos clés :
+
+--------------------------------------------------------------------------------
+GLPI_URL=http://localhost/glpi/apirest.php/
+GLPI_APP_TOKEN=COLLEZ_VOTRE_APP_TOKEN_ICI
+GLPI_USER_TOKEN=COLLEZ_VOTRE_USER_TOKEN_ICI
+
+SHEETS_WEBHOOK_URL=COLLEZ_VOTRE_URL_GOOGLE_APPS_SCRIPT_ICI
+SHEETS_AUTH_TOKEN=glpi-sync-secret
+
+APP_TIMEZONE=Etc/GMT-1
+SYNC_INTERVAL_MINUTES=10
+LOG_LEVEL=INFO
+--------------------------------------------------------------------------------
+
+💡 Remarque : 
+- Modifiez `GLPI_URL` par l'adresse de votre serveur GLPI si elle est différente.
+
+
+================================================================================
+ÉTAPE 4 : CRÉER LES INTITULÉS DANS GLPI EN 1 CLIC (30 SEC)
+================================================================================
+
+Pour créer automatiquement toutes les catégories (Informatique, Caisse, Imprimante...)
+et types de matériels dans GLPI :
+
+1. Ouvrez une invite de commande (Terminal / PowerShell) dans ce dossier.
+2. Tapez la commande suivante et appuyez sur Entrée :
+
+   `venv\Scripts\python seed_glpi_dropdowns.py`
+
+(Le script va tout créer proprement dans GLPI sans que vous n'ayez rien à faire à la main !).
+
+
+================================================================================
+ÉTAPE 5 : LANCER LA SYNCHRONISATION ! (10 SEC)
+================================================================================
+
+--- POUR TESTER UNE PREMIÈRE FOIS (Exécution unique) ---
+Dans votre terminal, tapez :
+
+   `venv\Scripts\python src\main.py --once`
+
+Vous verrez apparaître les informations de synchronisation à l'écran.
+
+
+--- POUR LANCER LA SYNCHRO EN CONTINU (Arrière-plan) ---
+Il vous suffit de double-cliquer sur le fichier :
+
+   👉 `run_sync.bat`
+
+La synchronisation tournera automatiquement toutes les 10 minutes !
+
+================================================================================
+🎉 BRAVO, VOTRE SYNCHRONISATION GLPI ↔ APPSHEET EST OPÉRATIONNELLE !
+================================================================================
