@@ -23,9 +23,24 @@ class SheetsClient:
                 f"Webhook returned non-JSON for {action} on {sheet}: {resp.text[:500]}"
             ) from e
 
-    def get_all_records(self, tab: str) -> list[dict[str, Any]]:
-        result = self._call("getAll", sheet=tab)
-        return result.get("data", [])
+    def get_all_records(self, tab: str, page_size: int = 2000) -> list[dict[str, Any]]:
+        """Fetch every row in `tab`, paginating server-side calls so a large
+        sheet never forces a single giant response (or risks Apps Script's
+        6-minute execution limit on one request).
+        """
+        all_rows: list[dict[str, Any]] = []
+        start = 0
+        while True:
+            result = self._call("getAll", sheet=tab, start=str(start), limit=str(page_size))
+            page = result.get("data", [])
+            all_rows.extend(page)
+            total = result.get("total")
+            start += len(page)
+            if not page or len(page) < page_size:
+                break
+            if total is not None and start >= total:
+                break
+        return all_rows
 
     def update_cell(self, tab: str, row: int, col_name: str, value: Any) -> None:
         self._call("updateCell", sheet=tab, row=str(row), col=col_name, value=str(value))

@@ -63,10 +63,13 @@ class Syncer:
         self.mappings = mappings
         self.cache = cache
         self.lookups = None
-        # Shared Ticket_User index for a single run() — avoids rebuilding the
-        # same search index once per direction (or twice within a direction).
+        # Shared Ticket_User index for a single run(), scoped by ticket ID so
+        # different callers touching different (usually small) ticket sets
+        # this cycle don't force a full-table re-fetch or stomp each other.
         # Reset at the top of every cycle so cross-cycle state never goes stale.
-        self._ticket_user_index_cache: dict[tuple[int, int], dict] | None = None
+        self._ticket_user_index_cache: dict[tuple[int, int], dict] = {}
+        self._ticket_user_index_covered_ids: set[int] = set()
+        self._ticket_user_index_is_full: bool = False
         # Ticket GLPI IDs actually created/updated this cycle in
         # _sheets_to_glpi, so the GLPI->Sheets healing pass only re-checks
         # tickets that were touched, not the whole sheet.
@@ -75,15 +78,39 @@ class Syncer:
     def set_lookups(self, lookups: LookupCache) -> None:
         self.lookups = lookups
 
-    def _get_ticket_user_index(self) -> dict[tuple[int, int], dict]:
-        """Lazily build (once per run()) and share the Ticket_User index.
+    def _get_ticket_user_index(
+        self, ticket_ids: set[int] | None = None
+    ) -> dict[tuple[int, int], dict]:
+        """Lazily build and share the Ticket_User index for one run().
+
+        Scoped by ticket_ids so per-cycle cost stays proportional to
+        "tickets touched this cycle," not total ticket count:
+          - ticket_ids=None means "give me everything" (rare — only the
+            initial full sync should ask for this). Caches as a full fetch.
+          - ticket_ids={...} fetches only IDs not already covered by the
+            cache this cycle, merges them in, and returns the full
+            accumulated index. Cheap on repeat calls with overlapping sets.
 
         Both directions (GLPI->Sheets actor loading, Sheets->GLPI requester
         linking) call this instead of hitting self.glpi.get_ticket_user_index()
-        directly, so a 19-ticket cycle costs one paginated search, not two+.
+        directly, so a cycle touching N tickets costs one filtered search
+        for those N tickets, not a full-table scan, and not more than once.
         """
-        if self._ticket_user_index_cache is None:
+        if self._ticket_user_index_is_full:
+            return self._ticket_user_index_cache
+
+        if ticket_ids is None:
+            # Full fetch requested — supersedes any partial cache.
             self._ticket_user_index_cache = self.glpi.get_ticket_user_index()
+            self._ticket_user_index_is_full = True
+            return self._ticket_user_index_cache
+
+        missing = {int(t) for t in ticket_ids} - self._ticket_user_index_covered_ids
+        if missing:
+            fetched = self.glpi.get_ticket_user_index(ticket_ids=missing)
+            self._ticket_user_index_cache.update(fetched)
+            self._ticket_user_index_covered_ids |= missing
+
         return self._ticket_user_index_cache
 
     def run(self) -> list[dict]:
@@ -91,7 +118,9 @@ class Syncer:
         errors: list[dict] = []
         stats = {"created": 0, "updated_glpi": 0, "sheet_updates": 0, "skipped": 0, "errors": 0}
         t0 = perf_counter()
-        self._ticket_user_index_cache = None
+        self._ticket_user_index_cache = {}
+        self._ticket_user_index_covered_ids = set()
+        self._ticket_user_index_is_full = False
         self._touched_ticket_glpi_ids = set()
 
         # GLPI → Sheets first so technician edits land on the sheet before we
@@ -147,6 +176,45 @@ class Syncer:
         # Ticket requester (Submitted_By) is a Ticket_User type=1 link, not a Ticket field.
         pending_requesters: dict[int, int] = {}  # sheet row_idx -> glpi users_id
         requester_stats = {"unchanged": 0, "set": 0, "recovered": 0, "failed": 0}
+
+        # Scope the Ticket_User index to tickets that already have a GLPI_ID
+        # (i.e. could plausibly already have a Ticket_User row worth checking).
+        # Brand-new tickets don't need pre-existing coverage — there's nothing
+        # to find yet, _ensure_ticket_requester just creates the link. This is
+        # what keeps the fetch proportional to "known tickets in this sheet
+        # that might need a dupe-check" rather than every Ticket_User ever.
+        existing_ticket_ids: set[int] = set()
+        if tab in ("Tickets", "ticket_assignments") and glpi_id_col:
+            for row in records:
+                gid = row.get(glpi_id_col)
+                if gid and str(gid).strip():
+                    try:
+                        existing_ticket_ids.add(int(gid))
+                    except (TypeError, ValueError):
+                        pass
+            if tab == "ticket_assignments":
+                # This tab's own GLPI_ID is the Ticket_User row id, not the
+                # ticket id. Ticket_ID here is an AppSheet reference into the
+                # Tickets sheet — resolve it to a GLPI ticket id via that
+                # sheet's GLPI_ID column before using it to scope the index.
+                existing_ticket_ids = set()
+                try:
+                    tickets_records = self.sheets.get_all_records("Tickets")
+                except Exception:
+                    tickets_records = []
+                appsheet_to_glpi: dict[str, int] = {}
+                for trec in tickets_records:
+                    tid = str(trec.get("Ticket_ID", "")).strip()
+                    gid = trec.get("GLPI_ID", "")
+                    if tid and gid:
+                        try:
+                            appsheet_to_glpi[tid] = int(gid)
+                        except (TypeError, ValueError):
+                            pass
+                for row in records:
+                    tid = str(row.get("Ticket_ID", "")).strip()
+                    if tid in appsheet_to_glpi:
+                        existing_ticket_ids.add(appsheet_to_glpi[tid])
 
         for row_idx, row in enumerate(records, start=2):
             glpi_id = row.get(glpi_id_col) if glpi_id_col else None
@@ -205,9 +273,10 @@ class Syncer:
                         cache_users = []
                 if ticket_user_index is None:
                     try:
-                        ticket_user_index = self._get_ticket_user_index()
+                        ticket_user_index = self._get_ticket_user_index(existing_ticket_ids)
                         logger.info(
-                            f"[{tab}] Loaded {len(ticket_user_index)} Ticket_User links from GLPI"
+                            f"[{tab}] Loaded {len(ticket_user_index)} Ticket_User links "
+                            f"from GLPI (scoped to {len(existing_ticket_ids)} known tickets)"
                         )
                     except Exception as e:
                         logger.warning(f"[{tab}] Could not preload Ticket_User index: {e}")
@@ -233,9 +302,10 @@ class Syncer:
                         cache_users = []
                 if ticket_user_index is None:
                     try:
-                        ticket_user_index = self._get_ticket_user_index()
+                        ticket_user_index = self._get_ticket_user_index(existing_ticket_ids)
                         logger.info(
-                            f"[{tab}] Loaded {len(ticket_user_index)} Ticket_User links from GLPI"
+                            f"[{tab}] Loaded {len(ticket_user_index)} Ticket_User links "
+                            f"from GLPI (scoped to {len(existing_ticket_ids)} known tickets)"
                         )
                     except Exception as e:
                         logger.warning(f"[{tab}] Could not preload Ticket_User index: {e}")
@@ -382,7 +452,7 @@ class Syncer:
                     cache_users = []
             if ticket_user_index is None:
                 try:
-                    ticket_user_index = self._get_ticket_user_index()
+                    ticket_user_index = self._get_ticket_user_index(self._touched_ticket_glpi_ids)
                 except Exception:
                     ticket_user_index = {}
             for row_idx, row in enumerate(records, start=2):
@@ -642,13 +712,34 @@ class Syncer:
                 if key[0] and key[1]:
                     sheet_by_composite[key] = idx
 
+        glpi_records = []
+        last_sync = self.cache.get_last_sync()
+        is_initial = last_sync == "1970-01-01T00:00:00"
+
         if tab == "Tickets":
             # Requester lives on Ticket_User (type=1), not on Ticket GET payload.
-            # Reuse the shared per-run Ticket_User index instead of having
-            # get_ticket_actors() rebuild its own — this is the same search
-            # _sheets_to_glpi already does for requester-linking this cycle.
+            # Scope to tickets that actually changed since last_sync — this is
+            # what keeps per-cycle cost proportional to "tickets that changed
+            # this cycle" instead of every ticket the sheet has ever seen,
+            # even as the sheet grows to thousands of historical rows.
             try:
-                shared_index = self._get_ticket_user_index()
+                if is_initial:
+                    # First run ever: nothing to scope against yet, so this
+                    # one pass legitimately needs the full table.
+                    shared_index = self._get_ticket_user_index(None)
+                else:
+                    try:
+                        changed = self.glpi.get_changed_items("Ticket", last_sync)
+                        changed_ticket_ids = {
+                            int(r["id"]) for r in changed if r.get("id")
+                        }
+                    except Exception as e:
+                        logger.warning(
+                            f"[{tab}] Could not determine changed tickets ({e}); "
+                            f"falling back to full Ticket_User scan this cycle"
+                        )
+                        changed_ticket_ids = None
+                    shared_index = self._get_ticket_user_index(changed_ticket_ids)
                 ticket_actors = self.glpi.get_ticket_actors(index=shared_index)
                 logger.info(
                     f"[{tab}] Loaded requester/assignee actors for "
@@ -657,10 +748,6 @@ class Syncer:
             except Exception as e:
                 logger.warning(f"[{tab}] Could not load ticket actors: {e}")
                 ticket_actors = {}
-
-        glpi_records = []
-        last_sync = self.cache.get_last_sync()
-        is_initial = last_sync == "1970-01-01T00:00:00"
 
         if mapping.routing_field:
             needed_types = set()
@@ -683,11 +770,30 @@ class Syncer:
                 glpi_records.extend(items)
 
         elif mapping.api_endpoint == "Ticket_User":
-            # Always load Ticket_User links so GLPI-side technician changes
-            # (type / actor) can flow back to the sheet. Bulk search only —
-            # no N+1 get_item. Still never INSERTs new sheet rows.
+            # Load Ticket_User links so GLPI-side technician changes (type /
+            # actor) can flow back to the sheet. Scoped to tickets that
+            # changed since last_sync — same fix as the Tickets tab's actor
+            # loading — instead of a full-table scan every cycle. Falls back
+            # to a full fetch on the very first sync (nothing to diff yet).
             try:
-                index = self.glpi.get_ticket_user_index()
+                if is_initial:
+                    index = self._get_ticket_user_index(None)
+                else:
+                    try:
+                        changed = self.glpi.get_changed_items("Ticket", last_sync)
+                        changed_ticket_ids = {
+                            int(r["id"]) for r in changed if r.get("id")
+                        }
+                    except Exception as e:
+                        logger.warning(
+                            f"[{tab}] Could not determine changed tickets ({e}); "
+                            f"falling back to full Ticket_User scan this cycle"
+                        )
+                        changed_ticket_ids = None
+                    if changed_ticket_ids is None:
+                        index = self._get_ticket_user_index(None)
+                    else:
+                        index = self._get_ticket_user_index(changed_ticket_ids)
                 glpi_records = list(index.values())
             except Exception as e:
                 logger.warning(f"[{tab}] Ticket_User index failed ({e}); falling back")
@@ -695,7 +801,10 @@ class Syncer:
             if not glpi_records:
                 logger.info(f"[{tab}] No Ticket_User records found")
                 return
-            logger.info(f"[{tab}] Loaded {len(glpi_records)} Ticket_User links")
+            logger.info(
+                f"[{tab}] Loaded {len(glpi_records)} Ticket_User links "
+                f"(scoped to tickets changed since {last_sync})"
+            )
         else:
             if is_initial:
                 try:

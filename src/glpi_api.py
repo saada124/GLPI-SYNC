@@ -221,12 +221,9 @@ class GLPIAPI:
                 return field_id
         return None
 
-    def get_ticket_user_index(self) -> dict[tuple[int, int], dict]:
-        """Build {(tickets_id, users_id): Ticket_User row} from search only.
-
-        Avoids N+1 get_item calls. Used for existence checks and reverse sync
-        when full GET payloads are not required.
-        """
+    def get_ticket_user_index(
+        self, ticket_ids: set[int] | list[int] | None = None
+    ) -> dict[tuple[int, int], dict]:
         ticket_field = self._resolve_search_field_id(
             "Ticket_User", "Tickets", "Ticket", "tickets_id"
         )
@@ -249,7 +246,33 @@ class GLPIAPI:
         seen: set[str] = set()
         forcedisplay = [x for x in forcedisplay if not (x in seen or seen.add(x))]
 
-        rows = self._search_paginated("Ticket_User", forcedisplay=forcedisplay)
+        criteria = None
+        if ticket_ids is not None and not ticket_ids:
+            # Explicitly "no tickets requested" — return empty rather than
+            # silently doing a full scan, which would defeat scoping for any
+            # future caller that passes an empty collection intentionally.
+            return {}
+        ids = sorted({int(t) for t in ticket_ids}) if ticket_ids else []
+        if ids:
+            if ticket_field is None:
+                # Can't filter server-side without the field ID — fetching the
+                # full table here would silently defeat the point of passing
+                # ticket_ids, so surface that instead of pretending it worked.
+                raise RuntimeError(
+                    "get_ticket_user_index: ticket_ids filter requested but "
+                    "the Ticket_User ticket-link search field could not be "
+                    "resolved; refusing to fall back to a full-table scan."
+                )
+            criteria = []
+            for i, tid in enumerate(ids):
+                clause = {"field": ticket_field, "searchtype": "equals", "value": tid}
+                if i > 0:
+                    clause["link"] = "OR"
+                criteria.append(clause)
+
+        rows = self._search_paginated(
+            "Ticket_User", forcedisplay=forcedisplay, criteria=criteria
+        )
         index: dict[tuple[int, int], dict] = {}
 
         for row in rows:
