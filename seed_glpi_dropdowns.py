@@ -5,8 +5,8 @@ This script logs into a GLPI 10.0.26 instance using REST API (App Token + User T
 creates Suppliers, ITIL Categories, and Computer Types if they don't exist, and logs out.
 
 Usage:
-    - Edit the constants GLPI_URL, APP_TOKEN, USER_TOKEN below.
-    - Run `pip install requests` if not already installed.
+    - Copy `.env.example` to `.env` and fill in your GLPI credentials.
+    - Run `pip install -r requirements.txt` if not already installed.
     - Execute the script: `python seed_glpi_dropdowns.py`.
 
 Features:
@@ -17,15 +17,19 @@ Features:
 You can edit whatever you want in the lists so it can match your needs.
 """
 
+import os
 import requests
 import time
 import logging
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # === Configuration ===
-GLPI_URL = "http://localhost/glpi/apirest.php" 
-APP_TOKEN = "v3Hf4GN4xnk7JN9zXLfEFYbQ8ABnlXqnAxjEsWs4"
-USER_TOKEN = "aZJJpf8A8FKjvO0hqikf150YS1Op9Np6owX6iECu"
+GLPI_URL = os.getenv("GLPI_URL", "http://localhost/glpi/apirest.php")
+APP_TOKEN = os.getenv("GLPI_APP_TOKEN")
+USER_TOKEN = os.getenv("GLPI_USER_TOKEN")
 
 # Option: Set verify_ssl=False to skip certificate verification (e.g. self-signed cert)
 VERIFY_SSL = True
@@ -153,6 +157,18 @@ def seed_items(session_token: str, item_type: str, names: List[str]):
             create_item(session_token, item_type, name)
 
 def main():
+    missing = []
+    if not GLPI_URL:
+        missing.append("GLPI_URL")
+    if not APP_TOKEN:
+        missing.append("GLPI_APP_TOKEN")
+    if not USER_TOKEN:
+        missing.append("GLPI_USER_TOKEN")
+    if missing:
+        logger.error(f"Missing required env vars: {', '.join(missing)}")
+        logger.error("Copy .env.example to .env and fill in your GLPI credentials.")
+        return
+
     # Login
     try:
         session_token = login()
