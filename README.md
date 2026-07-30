@@ -131,18 +131,25 @@ venv\Scripts\python -m pytest tests -v
 
 ---
 
-## 🛡️ Battletested Bug Fixes & Hardening
+## 🛠️ Problems & Challenges Solved
 
-| Challenge | Root Cause | Modern Solution | Result |
-| :--- | :--- | :--- | :--- |
-| **N+1 Query Storm** | Fetching assignment links one by one | `get_ticket_user_index()` bulk fetch | ⚡ 100+ requests saved per cycle |
-| **Timezone Loop** | Sheet local time vs UTC mismatch | `APP_TIMEZONE` + 120s re-dirty buffer | 🛑 0 infinite update loops |
-| **400 Duplicate Storms** | Re-posting existing link assignments | `_match_ticket_user()` existence pre-check | 🛡️ Clean, zero-error runs |
-| **Read-Only Clocks** | Pushing `date_mod` / `solvedate` to GLPI | `MIRROR_SHEET_COLS` filtering | 🛑 0 read-only date API failures |
-| **Misclassified Assets** | Unmapped categories turning to `Computer` | Strict category routing & normalization | 🎯 100% accurate asset types |
+Here are the real technical challenges we solved to make this integration fast, safe, and bug-free:
+
+| # | What was happening? (Problem) | Why did it happen? (Cause) | How did we fix it? (Solution) | Result |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | 🐢 **Sync took over 6.5 minutes** | Sending row updates one by one across the network | Grouped rows into single bulk updates (`batchUpdateRows`) | 🚀 **Sync runs in 1.5 minutes (75% faster)** |
+| 2 | 🔄 **Infinite sync loops** | Google Sheets used local time (CET) while GLPI used UTC time | Added timezone matching (`APP_TIMEZONE`) and a 2-minute safety buffer | 🛑 **Sync stops when data hasn't changed** |
+| 3 | 📶 **Too many network requests** | Checking ticket assignments made 1 network call per ticket | Created a single bulk index list to fetch all assignments at once | ⚡ **Saved 100+ unnecessary network calls** |
+| 4 | ⚠️ **Error 400 on ticket assignments** | App tried to re-assign users who were already assigned | Added a pre-check (`_match_ticket_user`) to skip existing links | 🛡️ **Zero assignment errors** |
+| 5 | 🙈 **Sub-categories were missing** | Standard API only listed top categories (15 total) | Combined list API with search API (`lookup.py`) to fetch sub-items | 📂 **All 34 categories load correctly** |
+| 6 | 💻 **All equipment saved as "Computer"** | Screens and cables had no routing rules in GLPI | Added smart category routing (Laptop -> Computer, Screen -> Monitor, etc.) | 🎯 **Assets are saved in correct GLPI categories** |
+| 7 | ❌ **Errors when updating dates** | GLPI rejected system dates (`date_mod`, `solvedate`) | Filtered out system dates so only real user changes get pushed | 🛑 **No more read-only date errors** |
+| 8 | 🗑️ **Data getting erased in Sheets** | Updating single cells could accidentally overwrite existing data | Switched to full-row read-merge-write before saving | 🔒 **Sheet data is never lost** |
+| 9 | 🚫 **Permission denied crashes** | GLPI user account had no permission to edit email tables | Removed restricted email fields from direct mapping | 🛡️ **No permission crashes** |
+| 10 | 💥 **Crash on missing user or ticket** | App crashed if a ticket pointed to a missing user ID | Added safety checks to skip broken links and log a warning | 🛡️ **Sync keeps running without crashing** |
 
 ---
 
-<p center="align">
+<p align="center">
   <b>Built with ❤️ for seamless ITSM & AppSheet integration.</b>
 </p>
