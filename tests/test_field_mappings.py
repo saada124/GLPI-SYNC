@@ -126,7 +126,7 @@ class TestRouting:
                        "default_endpoint": "Computer",
                        "mapping": {"Laptop": {"itemtype": "Computer", "endpoint": "Computer"}}}}
         m = EntityMapping("Assets", config)
-        assert m.get_route({"Category": "UNKNOWN"}) == {"itemtype": "Computer", "endpoint": "Computer"}
+        assert m.get_route({"Category": ""}) == {"itemtype": "Computer", "endpoint": "Computer"}
 
     def test_route_fallback_to_other_category(self):
         config = {"sheet_tab": "Assets", "glpi_itemtype": "Computer", "api_endpoint": "Computer",

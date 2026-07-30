@@ -12,16 +12,19 @@ def client():
 class TestUpdateRow:
     def test_filters_empty_values(self, client):
         with patch.object(client, "_call") as mock_call:
-            client.update_row("Tickets", 5, {"Name": "Hello", "Empty": "", "Null": None, "Zero": 0})
+            client.update_row("Tickets", 5, {"Name": "Hello", "Empty": "", "Null": None})
             mock_call.assert_called_once_with(
                 "updateRow", sheet="Tickets", row="5",
                 values=json.dumps({"Name": "Hello"})
             )
 
-    def test_filters_zero(self, client):
+    def test_preserves_zero_and_false(self, client):
         with patch.object(client, "_call") as mock_call:
-            client.update_row("Assets", 3, {"Count": 0})
-            mock_call.assert_not_called()
+            client.update_row("Assets", 3, {"Count": 0, "Active": False})
+            mock_call.assert_called_once_with(
+                "updateRow", sheet="Assets", row="3",
+                values=json.dumps({"Count": 0, "Active": False})
+            )
 
     def test_skip_when_all_empty(self, client):
         with patch.object(client, "_call") as mock_call:
@@ -38,12 +41,12 @@ class TestBatchUpdateRows:
             mock_call.assert_called_once_with(
                 "batchUpdateRows", sheet="Tickets",
                 rows=json.dumps([{"row": 5, "values": {"Name": "Hello"}},
-                                 {"row": 6, "values": {"Name": "World"}}])
+                                 {"row": 6, "values": {"Name": "World", "Zero": 0}}])
             )
 
     def test_skips_all_empty(self, client):
         with patch.object(client, "_call") as mock_call:
-            client.batch_update_rows("Tickets", [(5, {"Empty": "", "Zero": 0})])
+            client.batch_update_rows("Tickets", [(5, {"Empty": "", "Null": None})])
             mock_call.assert_not_called()
 
     def test_fallback_on_failure(self, client):
