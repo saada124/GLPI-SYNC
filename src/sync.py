@@ -168,6 +168,7 @@ class Syncer:
         synced_at_col = mapping.synced_at_col
         modified_at_col = mapping.modified_at_col
         created_at_col = mapping.created_at_col
+        glpi_itemtype_col = mapping.glpi_itemtype_col
 
         cache_tickets = None
         cache_users = None
@@ -355,7 +356,16 @@ class Syncer:
                     try:
                         new_id = self.glpi.add_item(endpoint, payload)
                         if glpi_id_col:
-                            pending_updates[row_idx] = {glpi_id_col: str(new_id)}
+                            pending_updates.setdefault(row_idx, {})[glpi_id_col] = str(new_id)
+                        if glpi_itemtype_col:
+                            # GLPI_ID alone is ambiguous across itemtypes (each
+                            # has its own ID sequence) — record which table this
+                            # ID belongs to so later reads/updates target the
+                            # right item instead of colliding on the same number.
+                            resolved_itemtype = (
+                                route["itemtype"] if mapping.routing_field else mapping.glpi_itemtype
+                            )
+                            pending_updates.setdefault(row_idx, {})[glpi_itemtype_col] = resolved_itemtype
                         if tab == "ticket_assignments" and ticket_user_index is not None:
                             try:
                                 key = (int(payload["tickets_id"]), int(payload["users_id"]))
@@ -438,6 +448,16 @@ class Syncer:
                     ticket_user_index if ticket_user_index is not None else {},
                 )
                 requester_stats[status] += 1
+
+            if glpi_itemtype_col:
+                current_itemtype = str(row.get(glpi_itemtype_col, "") or "").strip()
+                if not current_itemtype:
+                    # Row already has a GLPI_ID from before this fix existed —
+                    # backfill the itemtype now so it's no longer ambiguous.
+                    resolved_itemtype = (
+                        route["itemtype"] if mapping.routing_field else mapping.glpi_itemtype
+                    )
+                    pending_updates.setdefault(row_idx, {})[glpi_itemtype_col] = resolved_itemtype
 
             if synced_at_col:
                 pending_updates.setdefault(row_idx, {})[

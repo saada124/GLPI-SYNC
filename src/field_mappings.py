@@ -71,6 +71,15 @@ class EntityMapping:
     def created_at_col(self) -> str | None:
         return self.helper_columns.get("created_at")
 
+    @property
+    def glpi_itemtype_col(self) -> str | None:
+        configured = self.helper_columns.get("glpi_itemtype")
+        if configured:
+            return configured
+        if self.routing_field:
+            return "GLPI_Itemtype"
+        return None
+
     def get_route(self, row: dict[str, Any]) -> dict[str, str] | None:
         if not self.routing_field:
             return None

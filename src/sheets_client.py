@@ -9,12 +9,13 @@ class SheetsClient:
     def __init__(self, webhook_url: str, token: str):
         self.url = webhook_url
         self.token = token
+        self._session = requests.Session()
 
     def _call(self, action: str, sheet: str, **params) -> dict:
         params["action"] = action
         params["sheet"] = sheet
         params["token"] = self.token
-        resp = requests.get(self.url, params=params, timeout=120)
+        resp = self._session.get(self.url, params=params, timeout=120)
         resp.raise_for_status()
         try:
             return resp.json()
