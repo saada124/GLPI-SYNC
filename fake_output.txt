@@ -1,0 +1,68 @@
+2026-10-03 23:43:33 | INFO     | Loading field mappings...
+2026-10-03 23:43:34 | INFO     | Loaded 4 entity mappings: ['Users', 'Tickets', 'Assets', 'ticket_assignments']
+2026-10-03 23:43:34 | INFO     | Connecting to Google Sheets...
+2026-10-03 23:43:35 | INFO     | Connecting to GLPI API...
+2026-10-03 23:43:36 | INFO     | Loaded 34 entries for 'ITILCategory'
+2026-10-03 23:43:37 | INFO     | Loaded 9 entries for 'Supplier'
+2026-10-03 23:43:38 | INFO     | Loaded 42 entries for 'User'
+2026-10-03 23:43:39 | INFO     | === Sync cycle started ===
+2026-10-03 23:43:39 | INFO     | [Users] Checking GLPI->Sheets...
+2026-10-03 23:43:42 | INFO     | [Users] Updated sheet row for GLPI ID 104 (Role)
+2026-10-03 23:43:43 | INFO     | [Users] Updated sheet row for GLPI ID 112 (Active)
+2026-10-03 23:43:44 | INFO     | [Tickets] Checking GLPI->Sheets...
+2026-10-03 23:43:49 | INFO     | [Tickets] Loaded requester/assignee actors for 38 tickets
+2026-10-03 23:43:51 | INFO     | [Tickets] Updated sheet row for GLPI ID 542 (Status, Resolution)
+2026-10-03 23:43:52 | INFO     | [Tickets] Updated sheet row for GLPI ID 545 (Status)
+2026-10-03 23:43:55 | INFO     | [Tickets] Updated sheet row for GLPI ID 549 (Status, Priority)
+2026-10-03 23:43:56 | INFO     | [Tickets] Updated sheet row for GLPI ID 551 (Category)
+2026-10-03 23:43:58 | INFO     | [Tickets] Updated sheet row for GLPI ID 558 (Status, Resolution)
+2026-10-03 23:43:59 | INFO     | [Tickets] Updated sheet row for GLPI ID 560 (Status)
+2026-10-03 23:44:01 | INFO     | [Tickets] Updated sheet row for GLPI ID 563 (Status)
+2026-10-03 23:44:02 | INFO     | [Assets] Checking GLPI->Sheets...
+2026-10-03 23:44:05 | INFO     | [Assets] Updated sheet row for GLPI ID 210 (Status)
+2026-10-03 23:44:06 | INFO     | [Assets] Updated sheet row for GLPI ID 218 (Notes)
+2026-10-03 23:44:08 | INFO     | [Assets] Updated sheet row for GLPI ID 224 (Status)
+2026-10-03 23:44:09 | INFO     | [Assets] Updated sheet row for GLPI ID 230 (Serial_Number)
+2026-10-03 23:44:11 | INFO     | [ticket_assignments] Checking GLPI->Sheets...
+2026-10-03 23:44:13 | INFO     | [ticket_assignments] Loaded 48 Ticket_User links (scoped to tickets changed since 2026-10-03T21:40:00+00:00)
+2026-10-03 23:44:15 | INFO     | [ticket_assignments] Updated sheet row for GLPI ID 812
+2026-10-03 23:44:17 | INFO     | [ticket_assignments] Updated sheet row for GLPI ID 815
+2026-10-03 23:44:18 | INFO     | [ticket_assignments] Updated sheet row for GLPI ID 820
+2026-10-03 23:44:20 | INFO     | [Users] Checking Sheets->GLPI...
+2026-10-03 23:44:22 | INFO     | [Users] Updated GLPI ID 108
+2026-10-03 23:44:23 | INFO     | [Users] Updated GLPI ID 115
+2026-10-03 23:44:25 | INFO     | [Tickets] Checking Sheets->GLPI...
+2026-10-03 23:44:27 | INFO     | [Tickets] Loaded 38 Ticket_User links from GLPI (scoped to 38 known tickets)
+2026-10-03 23:44:29 | INFO     | [Tickets] Created GLPI ID 564
+2026-10-03 23:44:32 | INFO     | [Tickets] Created GLPI ID 565
+2026-10-03 23:44:33 | INFO     | [Tickets] Updated GLPI ID 538
+2026-10-03 23:44:35 | INFO     | [Tickets] Updated GLPI ID 540
+2026-10-03 23:44:36 | INFO     | [Tickets] Updated GLPI ID 543
+2026-10-03 23:44:38 | INFO     | [Tickets] Updated GLPI ID 546
+2026-10-03 23:44:39 | INFO     | [Tickets] Updated GLPI ID 548
+2026-10-03 23:44:41 | INFO     | [Tickets] Updated GLPI ID 550
+2026-10-03 23:44:43 | INFO     | [Tickets] Updated GLPI ID 552
+2026-10-03 23:44:44 | INFO     | [Tickets] Updated GLPI ID 555
+2026-10-03 23:44:46 | INFO     | [Tickets] Updated GLPI ID 557
+2026-10-03 23:44:47 | INFO     | [Tickets] Updated GLPI ID 559
+2026-10-03 23:44:49 | INFO     | [Tickets] Updated GLPI ID 561
+2026-10-03 23:44:50 | INFO     | [Tickets] Updated GLPI ID 562
+2026-10-03 23:44:52 | INFO     | [Tickets] Set requester user 14 on ticket 564 (Ticket_User 821)
+2026-10-03 23:44:53 | INFO     | [Tickets] Set requester user 22 on ticket 565 (Ticket_User 822)
+2026-10-03 23:44:54 | INFO     | [Tickets] Requester check: 38 touched tickets verified (36 already set, 2 newly set)
+2026-10-03 23:44:56 | INFO     | [Assets] Checking Sheets->GLPI...
+2026-10-03 23:44:58 | INFO     | [Assets] Created GLPI ID 235
+2026-10-03 23:44:59 | INFO     | [Assets] Created GLPI ID 236
+2026-10-03 23:45:01 | INFO     | [Assets] Updated GLPI ID 198
+2026-10-03 23:45:02 | INFO     | [Assets] Updated GLPI ID 201
+2026-10-03 23:45:04 | INFO     | [Assets] Updated GLPI ID 205
+2026-10-03 23:45:05 | INFO     | [Assets] Updated GLPI ID 212
+2026-10-03 23:45:07 | INFO     | [Assets] Updated GLPI ID 215
+2026-10-03 23:45:08 | INFO     | [Assets] Updated GLPI ID 221
+2026-10-03 23:45:09 | INFO     | [ticket_assignments] Checking Sheets->GLPI...
+2026-10-03 23:45:10 | INFO     | [ticket_assignments] Loaded 48 Ticket_User links from GLPI (scoped to 38 known tickets)
+2026-10-03 23:45:12 | INFO     | [ticket_assignments] Linked existing Ticket_User 809 to row 14
+2026-10-03 23:45:13 | INFO     | [ticket_assignments] Created GLPI ID 824
+2026-10-03 23:45:15 | INFO     | [ticket_assignments] Created GLPI ID 825
+2026-10-03 23:45:16 | INFO     | [ticket_assignments] Updated GLPI ID 810
+2026-10-03 23:45:16 | INFO     | === Sync cycle complete: 6 created, 54 updated in GLPI, 17 sheet rows refreshed, 328 skipped, 0 errors (98.4s) ===
